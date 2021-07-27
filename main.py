@@ -31,9 +31,8 @@ if __name__ == "__main__":
                                  .replace(":", "")\
                                  .replace(" ", "_")
     log_dir = os.path.join(hparams.Dir.log, "log_" + date)
-    print("log_dir:" + str(log_dir))
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    # print("log_dir:" + str(log_dir))
+    
     
     is_training = hparams.Infer.pre_trained == ""
     
@@ -43,8 +42,22 @@ if __name__ == "__main__":
     model = model_class(speech_dim, motion_dim, hparams)
     
     if is_training:
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
         model.build()
         model.train(data, log_dir, hparams)
 
     else:
         model.build(chkpt_path=hparams.Infer.pre_trained)
+
+        # Generate result on dev set
+        output_list, motion_list = model.synthesize_batch(data.get_test_dataset())
+        for i, output in enumerate(output_list):
+            data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"))
+        # Evaluate KDE
+        import torch
+        from models.wgan.kde_score import calculate_kde
+        output = torch.cat(output_list, dim=0).cpu().numpy()
+        motion = torch.cat(motion_list, dim=0).cpu().numpy()
+        kde_mean, _, kde_se = calculate_kde(output, motion)
+        print(kde_mean, kde_se)

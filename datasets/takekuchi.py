@@ -116,7 +116,7 @@ class TakekuchiDataset:
 
             test_input = list(map(self.speech_scaler.transform, test_input))
             test_output = list(map(self.motion_scaler.transform, test_output))
-            self.test_dataset = TestDataset(test_input, test_output)
+            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
         self.speech_dim = self.speech_scaler.mean_.shape[0]
         self.motion_dim = self.motion_scaler.mean_.shape[0]
