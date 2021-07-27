@@ -70,6 +70,8 @@ class ConditionalWGAN:
         
         for epoch in range(n_epochs):
 
+            print(f"Epoch {epoch}/{n_epochs}")
+
             for idx_batch, (seed, cond, target) in tqdm(enumerate(train_loader), total=len(train_loader)):
 
                 # to device
