@@ -11,7 +11,7 @@
     },
 
     "Infer": {
-        "pre_trained": "results/log_20210727_1641/chkpt/generator_0k.pt"
+        "pre_trained": ""
     },
 
     "Model": {
