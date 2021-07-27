@@ -130,7 +130,7 @@ class ConditionalWGAN:
                     # --------------------------------------------------------------------------------
                     # continuity loss
                     gen_pre_poses = gen_outputs[:, :self.chunklen]
-                    pre_poses = pre_poses[:, :self.chunklen]
+                    pre_poses = seed[:, :self.chunklen]
                     pre_pose_error = F.smooth_l1_loss(gen_pre_poses, pre_poses, reduction='none')
                     pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
                     pre_pose_error = pre_pose_error.mean() # mean over batch samples
@@ -153,12 +153,15 @@ class ConditionalWGAN:
 
                 # Log
                 if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                    print("generate samples")
                     # Generate result on dev set
                     output_list, motion_list = [], []
                     for i, (speech, motion) in enumerate(data.get_dev_dataset()):
-                        output = self.synthesize_sequence(speech)
-                        data.save_result(output, os.path.join(log_dir, f"{gen_iteration//1000}k/motion_{i}.txt"))
-                        output_list.append(output.cpu().numpy())
+                        if len(motion) < self.chunklen:
+                            continue
+                        output = self.synthesize_sequence(speech).cpu().numpy()
+                        data.save_unity_result(output, os.path.join(log_dir, f"{gen_iteration//1000}k/motion_{i}.txt"))
+                        output_list.append(output)
                         motion_list.append(motion.cpu().numpy())
                     # Evaluate KDE
                     output = np.concatenate(output_list, axis=0)
@@ -178,8 +181,8 @@ class ConditionalWGAN:
             cond = cond.unsqueeze(0)
             latent = self.sample_noise(1, device=self.device)
             with torch.no_grad():
-                output = self.gen(seed, latent, cond)
-            seed[:, :self.seedlen] = output[:, -self.seedlen:]
+                output = self.gen(seed, latent, cond).squeeze(0)
+            seed[:, :self.seedlen] = output[-self.seedlen:]
             motion_chunks.append(output)
 
         # Smooth transition
@@ -191,13 +194,12 @@ class ConditionalWGAN:
             for k in range(self.seedlen):
                 trans = ((self.seedlen - k) / (self.seedlen + 1)) * trans_prev[k] + ((k + 1) / (self.seedlen + 1)) * trans_next[k]
                 trans_motion.append(trans)
-            trans_motion = torch.from_numpy(np.array(trans_motion))
+            trans_motion = torch.stack(trans_motion)
             # Append each
             if i != len(motion_chunks) - 1: # not last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen-self.seedlen]], dim=0)
             else: # last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
-
         return motion
 
 

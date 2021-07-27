@@ -44,4 +44,4 @@ if __name__ == "__main__":
     model.build()
 
     if is_training:
-        model.train(data, hparams)
+        model.train(data, log_dir, hparams)
