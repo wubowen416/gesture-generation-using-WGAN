@@ -41,7 +41,10 @@ if __name__ == "__main__":
     speech_dim, motion_dim = data.get_dims()
 
     model = model_class(speech_dim, motion_dim, hparams)
-    model.build()
-
+    
     if is_training:
+        model.build()
         model.train(data, log_dir, hparams)
+
+    else:
+        model.build(chkpt_path=hparams.Infer.pre_trained)

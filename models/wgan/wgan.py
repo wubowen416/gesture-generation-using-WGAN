@@ -34,14 +34,17 @@ class ConditionalWGAN:
         self.device = hparams.device
 
     
-    def build(self):
-        self.gen = PoseGenerator(audio_feature_size=self.cond_dim, noise_size=self.noise_dim, dir_size=self.output_dim, n_poses=self.chunklen, hidden_size=self.gen_hidden, num_layers=self.gen_layers, dropout=self.gen_dropout, layernorm=self.gen_layernorm)
-        self.disc = ConvDiscriminator(audio_feature_size=self.cond_dim, n_poses=self.chunklen, dir_size=self.output_dim, hidden_size=self.disc_hidden, batchnorm=self.disc_batchnorm, layernorm=self.disc_layernorm, sa=False)
-        self.gen.to(self.device)
-        self.disc.to(self.device)
-        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=1e-4)
-        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=1e-4)
-        print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
+    def build(self, chkpt_path=None):
+        if chkpt_path:
+            self.load(chkpt_path)
+        else:
+            self.gen = PoseGenerator(audio_feature_size=self.cond_dim, noise_size=self.noise_dim, dir_size=self.output_dim, n_poses=self.chunklen, hidden_size=self.gen_hidden, num_layers=self.gen_layers, dropout=self.gen_dropout, layernorm=self.gen_layernorm)
+            self.disc = ConvDiscriminator(audio_feature_size=self.cond_dim, n_poses=self.chunklen, dir_size=self.output_dim, hidden_size=self.disc_hidden, batchnorm=self.disc_batchnorm, layernorm=self.disc_layernorm, sa=False)
+            self.gen.to(self.device)
+            self.disc.to(self.device)
+            self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=1e-4)
+            self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=1e-4)
+            print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
         
 
     def train(self, data, log_dir, hparams):
@@ -67,6 +70,7 @@ class ConditionalWGAN:
         writer = SummaryWriter(log_dir)
         gen_iteration = 0
         log_gap = hparams.Train.log_gap
+        hparams.dump(log_dir)
         
         for epoch in range(n_epochs):
 
@@ -157,20 +161,35 @@ class ConditionalWGAN:
                 if gen_iteration > 0 and gen_iteration % log_gap == 0:
                     print("generate samples")
                     # Generate result on dev set
-                    output_list, motion_list = [], []
-                    for i, (speech, motion) in enumerate(data.get_dev_dataset()):
-                        if len(motion) < self.chunklen:
-                            continue
-                        output = self.synthesize_sequence(speech).cpu().numpy()
-                        data.save_unity_result(output, os.path.join(log_dir, f"{gen_iteration//1000}k/motion_{i}.txt"))
-                        output_list.append(output)
-                        motion_list.append(motion.cpu().numpy())
+                    output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                    for i, output in enumerate(output_list):
+                        data.save_unity_result(output.cpu().numpy(), os.path.join(log_dir, f"{gen_iteration//1000}k/motion_{i}.txt"))
                     # Evaluate KDE
-                    output = np.concatenate(output_list, axis=0)
-                    motion = np.concatenate(motion_list, axis=0)
+                    output = torch.cat(output_list, dim=0).cpu().numpy()
+                    motion = torch.cat(motion_list, dim=0).cpu().numpy()
                     kde_mean, _, kde_se = calculate_kde(output, motion)
                     writer.add_scalar("kde/mean", kde_mean, gen_iteration)
                     writer.add_scalar("kde/se", kde_se, gen_iteration)
+                    # Save model
+                    self.save(log_dir, gen_iteration)
+
+    def save(self, log_dir, gen_iteration):
+        os.makedirs(os.path.join(log_dir, "chkpt"), exist_ok=True)
+        save_path = os.path.join(log_dir, f"chkpt/generator_{gen_iteration//1000}k.pt")
+        torch.save(self.gen.state_dict(), save_path)
+
+    def load(self, chkpt_path):
+        self.gen.load_state_dict(torch.load(chkpt_path))
+    
+    def synthesize_batch(self, batch_data):
+        output_list, motion_list = [], []
+        for i, (speech, motion) in enumerate(batch_data):
+            if len(motion) < self.chunklen:
+                continue
+            output = self.synthesize_sequence(speech)
+            output_list.append(output)
+            motion_list.append(motion)
+        return output_list, motion_list
 
     
     def synthesize_sequence(self, speech_chunks):
