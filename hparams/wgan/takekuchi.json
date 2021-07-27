@@ -36,7 +36,7 @@
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
-        "log_gap": 1
+        "log_gap": 1388
     },
 
     "device": "cuda"
