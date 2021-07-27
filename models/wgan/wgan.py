@@ -167,6 +167,8 @@ class ConditionalWGAN:
                         # Evaluate KDE
                         output = torch.cat(output_list, dim=0).cpu().numpy()
                         motion = torch.cat(motion_list, dim=0).cpu().numpy()
+                        output = data.motion_scaler.inverse_transform(output)
+                        motion = data.motion_scaler.inverse_transform(motion)
                         kde_mean, _, kde_se = calculate_kde(output, motion)
                         writer.add_scalar("kde/mean", kde_mean, gen_iteration)
                         writer.add_scalar("kde/se", kde_se, gen_iteration)

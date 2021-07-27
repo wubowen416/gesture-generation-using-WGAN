@@ -59,5 +59,7 @@ if __name__ == "__main__":
         from models.wgan.kde_score import calculate_kde
         output = torch.cat(output_list, dim=0).cpu().numpy()
         motion = torch.cat(motion_list, dim=0).cpu().numpy()
+        output = data.motion_scaler.inverse_transform(output)
+        motion = data.motion_scaler.inverse_transform(motion)
         kde_mean, _, kde_se = calculate_kde(output, motion)
         print(kde_mean, kde_se)
