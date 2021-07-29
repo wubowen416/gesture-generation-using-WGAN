@@ -89,12 +89,12 @@ class TakekuchiDataset:
             train_output = list(map(self.motion_scaler.transform, train_output))
 
             # Split validation 
-            train_input, val_input, train_output, val_output = train_test_split(
-                train_input, train_output, test_size=hparams.Data.valid_ratio, random_state=2021)
+            # train_input, val_input, train_output, val_output = train_test_split(
+            #     train_input, train_output, test_size=hparams.Data.valid_ratio, random_state=2021)
 
             # Create pytorch dataset
             self.train_dataset = TrainDataset(train_input, train_output, hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
-            self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
+            # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
             # Load dev data
             with open(os.path.join(data_dir, "X_dev.p"), 'rb') as f:
@@ -138,7 +138,7 @@ class TakekuchiDataset:
         return self.speech_dim, self.motion_dim
 
     def get_scaler(self):
-        return self.speech_dim, self.motion_scaler
+        return self.speech_scaler, self.motion_scaler
 
     def save_unity_result(self, data, save_path):
         os.makedirs(os.path.dirname(save_path), exist_ok=True) 

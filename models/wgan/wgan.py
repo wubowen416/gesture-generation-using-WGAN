@@ -10,6 +10,8 @@ from .generator import PoseGenerator
 from .discriminator import ConvDiscriminator
 from .kde_score import calculate_kde
 
+torch.backends.cudnn.benchmark = True
+
 class ConditionalWGAN:
 
     def __init__(self, cond_dim, output_dim, hparams):
@@ -40,10 +42,15 @@ class ConditionalWGAN:
         self.gen.to(self.device)
         self.disc.to(self.device)
         if chkpt_path:
+            # Load chkpt
             self.load(chkpt_path)
+            self.gen.eval()
         else:
-            self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=1e-4)
-            self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=1e-4)
+            # Train
+            self.gen.train()
+            self.disc.train()
+            self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=0.0001)
+            self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=0.0001)
             print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
         
 
@@ -64,11 +71,11 @@ class ConditionalWGAN:
             data.get_train_dataset(),
             batch_size=batch_size,
             shuffle=True,
-            drop_last=True)
+            num_workers=4)
 
         # Log relative
         writer = SummaryWriter(log_dir)
-        gen_iteration = 0
+        n_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
         
@@ -84,14 +91,12 @@ class ConditionalWGAN:
                 target = target.to(self.device)
 
                 # Train discriminator
-                self.disc.train()
-                self.gen.eval()
                 self.d_opt.zero_grad()
                 
-                latent = self.sample_noise(batch_size, device=self.device)
+                latent = self.sample_noise(cond.shape[0], device=self.device)
                 with torch.no_grad():
                     gen_outputs = self.gen(seed, latent, cond)
-                n_w_dis = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
+                nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
 
                 # --------------------------------------------------------------------------------
                 # Compute gradient penalty
@@ -115,7 +120,7 @@ class ConditionalWGAN:
                     gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
                 else:
                     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                d_loss = n_w_dis + gp_lambda * gradient_penalty
+                d_loss = nwd + gp_lambda * gradient_penalty
                 # --------------------------------------------------------------------------------
 
                 d_loss.backward()
@@ -123,11 +128,9 @@ class ConditionalWGAN:
 
                 # Train generator
                 if idx_batch % n_critic == 0:
-                    self.disc.eval()
-                    self.gen.train()
                     self.g_opt.zero_grad()
 
-                    latent = self.sample_noise(batch_size, device=self.device)
+                    latent = self.sample_noise(cond.shape[0], device=self.device)
                     gen_outputs = self.gen(seed, latent, cond)
 
                     # Loss
@@ -145,39 +148,42 @@ class ConditionalWGAN:
 
                     g_loss.backward()
                     self.g_opt.step()
-                    gen_iteration += 1
 
-                    w_distance = - n_w_dis.item()
+                    w_distance = - nwd.item()
                     # Estimated w-distance (opposite to disc loss)
-                    writer.add_scalar("loss/w-distance", w_distance, gen_iteration)
+                    writer.add_scalar("loss/w-distance", w_distance, n_iteration)
                     # Pre pose error
-                    writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), gen_iteration)
+                    writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), n_iteration)
                     # generator loss (critic)
-                    writer.add_scalar("loss/gen-loss", critic.item(), gen_iteration)
+                    writer.add_scalar("loss/gen-loss", critic.item(), n_iteration)
                     # gradient penalty
-                    writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), gen_iteration)
+                    writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
+
+                    print("Estimated w-distance: {:.4f}".format(w_distance))
 
                     # Log
-                    if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                    if n_iteration > 0 and n_iteration % log_gap == 0:
                         print("generate samples")
                         # Generate result on dev set
                         output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
                         for i, output in enumerate(output_list):
-                            data.save_unity_result(output.cpu().numpy(), os.path.join(log_dir, f"{gen_iteration//1000}k/motion_{i}.txt"))
+                            data.save_unity_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}.txt"))
                         # Evaluate KDE
                         output = torch.cat(output_list, dim=0).cpu().numpy()
                         motion = torch.cat(motion_list, dim=0).cpu().numpy()
                         output = data.motion_scaler.inverse_transform(output)
                         motion = data.motion_scaler.inverse_transform(motion)
                         kde_mean, _, kde_se = calculate_kde(output, motion)
-                        writer.add_scalar("kde/mean", kde_mean, gen_iteration)
-                        writer.add_scalar("kde/se", kde_se, gen_iteration)
+                        writer.add_scalar("kde/mean", kde_mean, n_iteration)
+                        writer.add_scalar("kde/se", kde_se, n_iteration)
                         # Save model
-                        self.save(log_dir, gen_iteration)
+                        self.save(log_dir, n_iteration)
 
-    def save(self, log_dir, gen_iteration):
+                n_iteration += 1
+
+    def save(self, log_dir, n_iteration):
         os.makedirs(os.path.join(log_dir, "chkpt"), exist_ok=True)
-        save_path = os.path.join(log_dir, f"chkpt/generator_{gen_iteration//1000}k.pt")
+        save_path = os.path.join(log_dir, f"chkpt/generator_{n_iteration//1000}k.pt")
         torch.save(self.gen.state_dict(), save_path)
 
     def load(self, chkpt_path):
