@@ -49,8 +49,8 @@ class ConditionalWGAN:
             # Train
             self.gen.train()
             self.disc.train()
-            self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=0.0001)
-            self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=0.0001)
+            self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=1e-4)
+            self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=1e-4)
             print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
         
 
@@ -76,6 +76,7 @@ class ConditionalWGAN:
         # Log relative
         writer = SummaryWriter(log_dir)
         n_iteration = 0
+        gen_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
         
@@ -91,6 +92,7 @@ class ConditionalWGAN:
                 target = target.to(self.device)
 
                 # Train discriminator
+                self.disc.train()
                 self.d_opt.zero_grad()
                 
                 latent = self.sample_noise(cond.shape[0], device=self.device)
@@ -127,7 +129,9 @@ class ConditionalWGAN:
                 self.d_opt.step()
 
                 # Train generator
+                # if False:
                 if idx_batch % n_critic == 0:
+                    self.gen.train()
                     self.g_opt.zero_grad()
 
                     latent = self.sample_noise(cond.shape[0], device=self.device)
@@ -138,9 +142,8 @@ class ConditionalWGAN:
 
                     # --------------------------------------------------------------------------------
                     # continuity loss
-                    gen_pre_poses = gen_outputs[:, :self.chunklen]
-                    pre_poses = seed[:, :self.chunklen]
-                    pre_pose_error = F.smooth_l1_loss(gen_pre_poses, pre_poses, reduction='none')
+                    pre_pose_error = F.smooth_l1_loss(
+                        gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
                     pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
                     pre_pose_error = pre_pose_error.mean() # mean over batch samples
                     g_loss = critic + cl_lambda * pre_pose_error
@@ -159,10 +162,10 @@ class ConditionalWGAN:
                     # gradient penalty
                     writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
 
-                    print("Estimated w-distance: {:.4f}".format(w_distance))
+                    # print("Estimated w-distance: {:.4f}".format(w_distance))
 
                     # Log
-                    if n_iteration > 0 and n_iteration % log_gap == 0:
+                    if gen_iteration > 0 and gen_iteration % log_gap == 0:
                         print("generate samples")
                         # Generate result on dev set
                         output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
@@ -178,6 +181,8 @@ class ConditionalWGAN:
                         writer.add_scalar("kde/se", kde_se, n_iteration)
                         # Save model
                         self.save(log_dir, n_iteration)
+
+                    gen_iteration += 1
 
                 n_iteration += 1
 

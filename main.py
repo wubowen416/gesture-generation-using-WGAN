@@ -48,7 +48,11 @@ if __name__ == "__main__":
         model.train(data, log_dir, hparams)
 
     else:
+        
         model.build(chkpt_path=hparams.Infer.pre_trained)
+
+        # ---------------------
+        # Customize
 
         # Generate result on dev set
         output_list, motion_list = model.synthesize_batch(data.get_test_dataset())

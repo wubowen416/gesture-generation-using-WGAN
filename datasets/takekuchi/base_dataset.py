@@ -23,11 +23,11 @@ class TrainDataset(Dataset):
         self.X_chunks = np.array(X_chunks)
 
         Y_chunks = []
-        for x in Y:
-            if x.shape[0] < chunklen:
+        for y in Y:
+            if y.shape[0] < chunklen:
                 continue
             else:
-                chunk = chunkize(x, chunklen, stride)
+                chunk = chunkize(y, chunklen, stride)
                 Y_chunks.extend(chunk)
         self.Y_chunks = np.array(Y_chunks)
 
@@ -42,7 +42,7 @@ class TrainDataset(Dataset):
         speech_chunk = self.X_chunks[idx]
         motion_chunk = self.Y_chunks[idx]
 
-        seed_motion = np.zeros((self.chunklen, motion_chunk.shape[-1]))
+        seed_motion = np.zeros_like(motion_chunk)
         seed_motion[:self.seedlen, :] = motion_chunk[:self.seedlen, :]
 
         seed_motion = torch.from_numpy(seed_motion).float()
