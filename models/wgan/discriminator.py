@@ -1,115 +1,115 @@
 import torch
 from torch import nn
 
-from .jit_gru import JitGRU
+# from .jit_gru import JitGRU
 
 
-class JitBiGRU(nn.Module):
+# class JitBiGRU(nn.Module):
 
-    def __init__(self, input_size, hidden_size, num_layers, batch_first=True, bias=True, mode='sum', dropout=0.2):
+#     def __init__(self, input_size, hidden_size, num_layers, batch_first=True, bias=True, mode='sum', dropout=0.2):
 
-        super().__init__()
+#         super().__init__()
 
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.batch_first = batch_first
-        self.mode = mode
-        self.dropout = dropout
+#         self.hidden_size = hidden_size
+#         self.num_layers = num_layers
+#         self.batch_first = batch_first
+#         self.mode = mode
+#         self.dropout = dropout
 
-        if num_layers == 1:
-            self.forward_rnn_layers = nn.ModuleList(
-                [JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)])
-            self.backward_rnn_layers = nn.ModuleList(
-                [JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)])
+#         if num_layers == 1:
+#             self.forward_rnn_layers = nn.ModuleList(
+#                 [JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)])
+#             self.backward_rnn_layers = nn.ModuleList(
+#                 [JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)])
 
-        else:
-            self.forward_rnn_layers = nn.ModuleList([JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)] + [
-                                                    JitGRU(hidden_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias) for _ in range(num_layers - 1)])
-            self.backward_rnn_layers = nn.ModuleList([JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)] + [
-                                                     JitGRU(hidden_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias) for _ in range(num_layers - 1)])
+#         else:
+#             self.forward_rnn_layers = nn.ModuleList([JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)] + [
+#                                                     JitGRU(hidden_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias) for _ in range(num_layers - 1)])
+#             self.backward_rnn_layers = nn.ModuleList([JitGRU(input_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias)] + [
+#                                                      JitGRU(hidden_size, hidden_size, num_layers=1, batch_first=batch_first, bias=bias) for _ in range(num_layers - 1)])
 
-        if dropout:
-            self.dropout_layer = nn.Dropout(p=dropout, inplace=True)
+#         if dropout:
+#             self.dropout_layer = nn.Dropout(p=dropout, inplace=True)
 
-    def forward(self, x):
+#     def forward(self, x):
 
-        for forward_layer, backward_layer in zip(self.forward_rnn_layers, self.backward_rnn_layers):
+#         for forward_layer, backward_layer in zip(self.forward_rnn_layers, self.backward_rnn_layers):
 
-            x_forward, _ = forward_layer(x)
-            x_backward, _ = backward_layer(torch.flip(x, dims=[1]))
+#             x_forward, _ = forward_layer(x)
+#             x_backward, _ = backward_layer(torch.flip(x, dims=[1]))
 
-            if self.mode == 'sum':
-                x = x_forward + x_backward
+#             if self.mode == 'sum':
+#                 x = x_forward + x_backward
 
-            if self.dropout:
-                x = self.dropout_layer(x)
+#             if self.dropout:
+#                 x = self.dropout_layer(x)
 
-        return x
-
-
-class GRUDiscriminator(nn.Module):
-
-    def __init__(self, audio_feature_size, dir_size, hidden_size, dropout=0.2):
-
-        super().__init__()
-
-        self.audio_feature_size = audio_feature_size
-        self.dir_size = dir_size
-        self.hidden_size = hidden_size
-
-        self.pre_conv = nn.Sequential(
-            nn.Conv1d(audio_feature_size + dir_size, 16, 3),
-            nn.BatchNorm1d(16),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv1d(16, 8, 3),
-            nn.BatchNorm1d(8),
-            nn.LeakyReLU(0.2, True),
-            nn.Conv1d(8, 8, 3),
-        )
-
-        self.gru = JitBiGRU(8, hidden_size, num_layers=2,
-                            mode='sum', dropout=0.2)
-        self.out = nn.Linear(hidden_size, 1)
-        self.out2 = nn.Linear(28, 1)
-
-    def forward(self, in_dir, in_audio):
-
-        x = torch.cat([in_dir, in_audio], dim=-1)  # (N, T, 29)
-
-        x = x.transpose(1, 2)
-        x = self.pre_conv(x)
-        x = x.transpose(1, 2)
-
-        x = self.gru(x)
-
-        x = self.out(x)
-        x = x.squeeze(-1)
-        return self.out2(x)
-
-    def count_parameters(self):
-        return sum([p.numel() for p in self.parameters() if p.requires_grad])
+#         return x
 
 
-class SelfAttention(nn.Module):
+# class GRUDiscriminator(nn.Module):
 
-    def __init__(self, in_size, h_size):
+#     def __init__(self, audio_feature_size, dir_size, hidden_size, dropout=0.2):
 
-        super(SelfAttention, self).__init__()
+#         super().__init__()
 
-        self.in_size = in_size
-        self.h_size = h_size
+#         self.audio_feature_size = audio_feature_size
+#         self.dir_size = dir_size
+#         self.hidden_size = hidden_size
 
-        self.weight_q = nn.Parameter(torch.nn.init.normal_(
-            torch.Tensor(in_size, h_size), 0.0, 0.02), requires_grad=True)
-        self.weight_k = nn.Parameter(torch.nn.init.normal_(
-            torch.Tensor(in_size, h_size), 0.0, 0.02), requires_grad=True)
+#         self.pre_conv = nn.Sequential(
+#             nn.Conv1d(audio_feature_size + dir_size, 16, 3),
+#             nn.BatchNorm1d(16),
+#             nn.LeakyReLU(0.2, True),
+#             nn.Conv1d(16, 8, 3),
+#             nn.BatchNorm1d(8),
+#             nn.LeakyReLU(0.2, True),
+#             nn.Conv1d(8, 8, 3),
+#         )
 
-    def forward(self, x):
-        Q = x @ self.weight_q
-        K = x @ self.weight_k
-        logit = torch.einsum('tbd,tbd -> tb', Q, K).unsqueeze(-1) / np.sqrt(self.h_size) # (T, B, 1)
-        att = torch.softmax(logit, dim=0)  # for each time step (T, B, 1)
-        return att * x, att
+#         self.gru = JitBiGRU(8, hidden_size, num_layers=2,
+#                             mode='sum', dropout=0.2)
+#         self.out = nn.Linear(hidden_size, 1)
+#         self.out2 = nn.Linear(28, 1)
+
+#     def forward(self, in_dir, in_audio):
+
+#         x = torch.cat([in_dir, in_audio], dim=-1)  # (N, T, 29)
+
+#         x = x.transpose(1, 2)
+#         x = self.pre_conv(x)
+#         x = x.transpose(1, 2)
+
+#         x = self.gru(x)
+
+#         x = self.out(x)
+#         x = x.squeeze(-1)
+#         return self.out2(x)
+
+#     def count_parameters(self):
+#         return sum([p.numel() for p in self.parameters() if p.requires_grad])
+
+
+# class SelfAttention(nn.Module):
+
+#     def __init__(self, in_size, h_size):
+
+#         super(SelfAttention, self).__init__()
+
+#         self.in_size = in_size
+#         self.h_size = h_size
+
+#         self.weight_q = nn.Parameter(torch.nn.init.normal_(
+#             torch.Tensor(in_size, h_size), 0.0, 0.02), requires_grad=True)
+#         self.weight_k = nn.Parameter(torch.nn.init.normal_(
+#             torch.Tensor(in_size, h_size), 0.0, 0.02), requires_grad=True)
+
+#     def forward(self, x):
+#         Q = x @ self.weight_q
+#         K = x @ self.weight_k
+#         logit = torch.einsum('tbd,tbd -> tb', Q, K).unsqueeze(-1) / np.sqrt(self.h_size) # (T, B, 1)
+#         att = torch.softmax(logit, dim=0)  # for each time step (T, B, 1)
+#         return att * x, att
 
 
 class ConvDiscriminator(nn.Module):
@@ -136,22 +136,187 @@ class ConvDiscriminator(nn.Module):
 
         if layernorm:
 
-            self.conv_layers = nn.Sequential(
-                self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
-                nn.LayerNorm((128, 32)),
-                self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
-                nn.LayerNorm((256, 15)),
+            if n_poses == 34:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 32)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 15)),
 
-                self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
-                nn.LayerNorm((256, 13)),
-                self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
-                nn.LayerNorm((512, 5)),
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 13)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 5)),
 
-                self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
-                nn.LayerNorm((512, 3)),
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 3)),
 
-                nn.Conv1d(4 * hidden_size, 8 * hidden_size, 3)
-            ) # for 34 frames
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 3)
+                ) # for 34 frames
+
+            elif n_poses == 32:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 30)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 14)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 12)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 5)),
+
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 3)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 3)
+                ) # for 34 frames
+
+            elif n_poses == 30:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 28)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 13)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 11)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 4)),
+
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 2)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 2)
+                ) # for 34 frames
+
+            elif n_poses == 28:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 26)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 12)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 10)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 4)),
+
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 2)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 2)
+                ) # for 34 frames
+
+            elif n_poses == 26:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 24)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 11)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 9)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 3)),
+
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                ) # for 34 frames
+
+            elif n_poses == 24:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 22)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 10)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 8)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 3)),
+
+                    self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                ) # for 34 frames
+
+            elif n_poses == 22:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 20)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 9)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 7)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 2)),
+
+                    # self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 2)
+                ) # for 34 frames
+
+            elif n_poses == 20:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 18)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 8)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 6)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 2)),
+
+                    # # self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 2)
+                ) # for 34 frames
+
+            elif n_poses == 18:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 16)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 7)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 5)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    # # # self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # # # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                ) # for 34 frames
+
+            elif n_poses == 16:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 14)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 6)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 4)),
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    # self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                )
+
+        
 
         else:
             self.conv_layers = nn.Sequential(
@@ -194,8 +359,8 @@ class ConvDiscriminator(nn.Module):
                 nn.Linear(64, 1),
             )
 
-        if sa:
-            self.sa_layer = SelfAttention(hidden_size, hidden_size)
+        # if sa:
+        #     self.sa_layer = SelfAttention(hidden_size, hidden_size)
 
     def conv_block(self, in_channels, out_channels, downsample=False, padding=0, batchnorm=False):
 
@@ -221,7 +386,7 @@ class ConvDiscriminator(nn.Module):
         return net
 
 
-    def forward(self, in_dir, in_audio):
+    def forward(self, in_dir, in_audio, debug=False):
 
         x_audio = self.audio_feature_extractor(in_audio)
         x_pose = self.pose_feature_extractor(in_dir)
@@ -232,6 +397,9 @@ class ConvDiscriminator(nn.Module):
 
         x = x.transpose(1, 2)
         x = self.conv_layers(x)
+        if debug:
+            print(x.shape)
+            assert 0
         x = x.transpose(1, 2)
         x = x.view(x.size(0), -1)
 
@@ -243,13 +411,15 @@ class ConvDiscriminator(nn.Module):
 
 if __name__ == "__main__":
 
-    in_dir = torch.Tensor(2, 34, 27).normal_()
-    in_audio = torch.Tensor(2, 34, 2).normal_()
-    disc = ConvDiscriminator(2, 27, 34, 128, batchnorm=False, layernorm=True)
+    T = 16
 
-    print(disc.count_parameters())
+    in_dir = torch.Tensor(2, T, 27).normal_()
+    in_audio = torch.Tensor(2, T, 2).normal_()
+    disc = ConvDiscriminator(2, 27, T, 128, batchnorm=False, layernorm=True)
 
-    disc(in_dir, in_audio)
+    # print(disc.count_parameters())
+
+    disc(in_dir, in_audio, debug=True)
 
     # print(disc)
 
