@@ -316,6 +316,63 @@ class ConvDiscriminator(nn.Module):
                     nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
                 )
 
+            elif n_poses == 14:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 12)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 5)),
+
+                    self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((256, 3)),
+
+                    # self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    # nn.LayerNorm((512, 1)),
+
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                )
+
+            elif n_poses == 12:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 10)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 4)),
+
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 2)),
+
+                    # # self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    # # nn.LayerNorm((512, 1)),
+
+                    # self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 2)
+                )
+
+            elif n_poses == 10:
+                self.conv_layers = nn.Sequential(
+                    self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((128, 8)),
+                    self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
+                    nn.LayerNorm((256, 3)),
+
+                    self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    nn.LayerNorm((512, 1)),
+
+                    # # # self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
+                    # # # nn.LayerNorm((512, 1)),
+
+                    # # self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
+                    # # nn.LayerNorm((512, 1)),
+
+                    nn.Conv1d(4 * hidden_size, 8 * hidden_size, 1)
+                )
+
         
 
         else:
@@ -411,7 +468,7 @@ class ConvDiscriminator(nn.Module):
 
 if __name__ == "__main__":
 
-    T = 16
+    T = 10
 
     in_dir = torch.Tensor(2, T, 27).normal_()
     in_audio = torch.Tensor(2, T, 2).normal_()
