@@ -6,7 +6,7 @@
 
     "Data": {
         "valid_ratio": 0.1,
-        "chunklen": 34,
+        "chunklen": 22,
         "seedlen": 4
     },
 
@@ -35,7 +35,7 @@
         "n_critic": 10,
         "gp_lambda": 10,
         "gp_zero_center": false,
-        "cl_lambda": 0.2,
+        "cl_lambda": 0,
         "log_gap": 750
     },
 
