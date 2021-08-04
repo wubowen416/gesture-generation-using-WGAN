@@ -8,7 +8,8 @@ LAST_DATA_ID = 1182
 
 AUGMENT = False
 
-data_root = "/media/wu/database/speech-to-gesture-takekuchi-2017/"
+# data_root = "/media/wu/database/speech-to-gesture-takekuchi-2017/"
+data_root = "./data/takekuchi/source"
 
 
 def _split_and_format_data(data_dir):
