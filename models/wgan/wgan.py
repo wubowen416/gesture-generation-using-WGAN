@@ -170,7 +170,7 @@ class ConditionalWGAN:
                         # Generate result on dev set
                         output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
                         for i, output in enumerate(output_list):
-                            data.save_unity_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}.txt"))
+                            data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
                         # Evaluate KDE
                         output = torch.cat(output_list, dim=0).cpu().numpy()
                         motion = torch.cat(motion_list, dim=0).cpu().numpy()

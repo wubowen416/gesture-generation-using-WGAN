@@ -140,6 +140,9 @@ class TakekuchiDataset:
     def get_scaler(self):
         return self.speech_scaler, self.motion_scaler
 
+    def save_result(self, data, save_path):
+        self.save_unity_result(data, save_path + '.txt')
+
     def save_unity_result(self, data, save_path):
         os.makedirs(os.path.dirname(save_path), exist_ok=True) 
         # rescale
