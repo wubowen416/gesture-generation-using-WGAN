@@ -78,7 +78,7 @@ def parse_arg():
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
     # parser.add_argument('--dataset-dir', default='./data/takekuchi/source',
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--data-dir', default='./data/takekuchi/processed',
+    parser.add_argument('--data-dir', default='./data/takekuchi/processed/hip',
                         help="Specify processed data save dir")
     return parser.parse_args()
 
