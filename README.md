@@ -14,7 +14,7 @@ Official implementation for an upcoming workshop paper in ICMI2021.
 1. Clone the repository
 2. execute 'conda env create -f environment.yml' to create a conda environment
 3. Download a dataset from https://www.dropbox.com/sh/j419kp4m8hkt9nd/AAC_pIcS1b_WFBqUp5ofBG1Ia?dl=0
-4. Download the extracted speech features https://drive.google.com/drive/folders/1BvQYXkQ1aju7KiOIUKsSmzSrj9tZXH2f?usp=sharing
+4. Download the extracted speech features https://drive.google.com/drive/folders/1eISYiVAeRunO4CEXD47GxqPw3bmwJ7fr?usp=sharing
 5. Create a directory `./data/takekuchi/source` and put downloaded data into three directories `motion/`, `speech/` and `speeche_features/`, separately.
 
 ```
