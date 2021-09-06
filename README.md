@@ -1,10 +1,16 @@
 # gesture-generation
 
+## Introduction
+
 Official implementation for an upcoming workshop paper in ICMI2021.
+
+## Example
 
 ![A simple sample for wgan on TAKEKUCHI dataset](demo/cl34-dev8.gif)
 
-## To reproduce
+## Usage
+
+### To reproduce
 1. Clone the repository
 2. execute 'conda env create -f environment.yml' to create a conda environment
 3. Download a dataset from https://www.dropbox.com/sh/j419kp4m8hkt9nd/AAC_pIcS1b_WFBqUp5ofBG1Ia?dl=0
@@ -33,5 +39,8 @@ data
       ```
    2. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion and KDE results.
 
-## To visualize
+### To visualize
 See https://github.com/wubowen416/unity_gesture_visualizer.
+
+## Contact
+For any questions, please contact wu.bowen@irl.sys.es.osaka-u.ac.jp
