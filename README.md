@@ -33,3 +33,4 @@ data
    2. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion and KDE results.
 
 ## To visualize
+See https://github.com/wubowen416/unity_gesture_visualizer.
