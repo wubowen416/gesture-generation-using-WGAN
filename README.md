@@ -24,12 +24,12 @@ data
 6. preprocess dataset `python datasets/takekuchi/data_processing/create_vector.py`
 7. train model `python main.py wgan takekuchi hparams/wgan/paper_version.json`
 8. Evaluate the model on test set (which was not used during training)
-   a. Copy saved model checkpoint path (in `results/log_date/chkpt`) to `Infer: pre_trained` inside `hparams/wgan/paper_version.json`
+   1. Copy saved model checkpoint path (in `results/log_date/chkpt`) to `Infer: pre_trained` inside `hparams/wgan/paper_version.json`
       ```
       "Infer": {
         "pre_trained": "results/log_20210905_2217/chkpt/generator_232k.pt"
       },
       ```
-   b. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion and KDE results.
+   2. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion and KDE results.
 
 ## To visualize
