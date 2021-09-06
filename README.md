@@ -23,7 +23,7 @@ data
 5. split train, dev, and test, `python datasets/takekuchi/data_processing/prepare_data.py`
 6. preprocess dataset `python datasets/takekuchi/data_processing/create_vector.py`
 7. train model `python main.py wgan takekuchi hparams/wgan/paper_version.json`
-8. Evaluate the model using on test set (which was not used during training)
+8. Evaluate the model on test set (which was not used during training)
    a. Copy saved model checkpoint path (in `results/log_date/chkpt`) to `Infer: pre_trained` inside `hparams/wgan/paper_version.json`
       ```
       "Infer": {
