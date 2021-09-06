@@ -54,8 +54,8 @@ if __name__ == "__main__":
         # ---------------------
         # Customize
 
-        # Generate result on dev set
-        output_list, motion_list = model.synthesize_batch(data.get_test_dataset())
+        # Generate result on test set
+        output_list, motion_list = model.synthesize_batch(data.get_dev_dataset())
         for i, output in enumerate(output_list):
             data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"))
         # Evaluate KDE
