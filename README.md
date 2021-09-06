@@ -21,10 +21,10 @@ data
       --speech_features
 ```
 
-5. split train, dev, and test, `python datasets/takekuchi/data_processing/prepare_data.py`
-6. preprocess dataset `python datasets/takekuchi/data_processing/create_vector.py`
-7. train model `python main.py wgan takekuchi hparams/wgan/paper_version.json`
-8. Evaluate the model on test set (which was not used during training)
+6. split train, dev, and test, `python datasets/takekuchi/data_processing/prepare_data.py`
+7. preprocess dataset `python datasets/takekuchi/data_processing/create_vector.py`
+8. train model `python main.py wgan takekuchi hparams/wgan/paper_version.json`
+9. Evaluate the model on test set (which was not used during training)
    1. Copy saved model checkpoint path (in `results/log_date/chkpt`) to `Infer: pre_trained` inside `hparams/wgan/paper_version.json`
       ```
       "Infer": {
