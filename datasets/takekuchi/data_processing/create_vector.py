@@ -77,8 +77,11 @@ def parse_arg():
     # parser.add_argument('--dataset-dir', default='/media/wu/database/speech-to-gesture-takekuchi-2017/split',
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
     parser.add_argument('--dataset-dir', default='./data/takekuchi/source/split',
+
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--data-dir', default='./data/takekuchi/processed',
+    # parser.add_argument('--dataset-dir', default='./data/takekuchi/source',
+    #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
+    parser.add_argument('--data-dir', default='./data/takekuchi/processed/hip',
                         help="Specify processed data save dir")
     return parser.parse_args()
 
