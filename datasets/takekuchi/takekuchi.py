@@ -109,9 +109,9 @@ class TakekuchiDataset:
 
         else:
             # Load test data
-            with open(os.path.join(data_dir, "X_test.p"), 'rb') as f:
+            with open(os.path.join(data_dir, "X_dev.p"), 'rb') as f:
                 test_input = pickle.load(f)
-            with open(os.path.join(data_dir, "Y_test.p"), 'rb') as f:
+            with open(os.path.join(data_dir, "Y_dev.p"), 'rb') as f:
                 test_output = pickle.load(f)
 
             test_input = list(map(self.speech_scaler.transform, test_input))

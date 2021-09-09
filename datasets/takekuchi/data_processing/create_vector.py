@@ -74,7 +74,10 @@ def create(name, dataset_dir, data_dir):
 def parse_arg():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset-dir', default='/media/wu/database/speech-to-gesture-takekuchi-2017/split',
+    # parser.add_argument('--dataset-dir', default='/media/wu/database/speech-to-gesture-takekuchi-2017/split',
+    #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
+    parser.add_argument('--dataset-dir', default='./data/takekuchi/source/split',
+
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
     # parser.add_argument('--dataset-dir', default='./data/takekuchi/source',
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
