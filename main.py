@@ -31,7 +31,7 @@ if __name__ == "__main__":
                                  .replace(":", "")\
                                  .replace(" ", "_")
     log_dir = os.path.join(hparams.Dir.log, "log_" + date)
-    # print("log_dir:" + str(log_dir))
+    print("log_dir:" + str(log_dir))
     
     
     is_training = hparams.Infer.pre_trained == ""
