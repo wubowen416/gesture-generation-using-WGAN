@@ -1,4 +1,5 @@
 import pandas as pd
+from python_speech_features.base import mfcc
 import tqdm
 import pickle
 import argparse
@@ -8,7 +9,10 @@ import joblib as jl
 from sklearn.preprocessing import StandardScaler
 
 from bvh_to_rot import vectorize_bvh_to_rotation
-from prosodic_feature import semitone_prosody
+from audio_feature import semitone_prosody, calculate_mfcc
+
+
+FEATURE_TYPE = "mfcc_prosody"
 
 
 def shorten(arr1, arr2):
@@ -32,10 +36,23 @@ def create_vectors(audio_filename, gesture_filename):
     """
 
     # Step 1: speech features
-    input_vectors = semitone_prosody(audio_filename)
+    if FEATURE_TYPE == "prosody":
+        input_vectors = semitone_prosody(audio_filename)
+    elif FEATURE_TYPE == "mfcc":
+        input_vectors = calculate_mfcc(audio_filename)
+    elif FEATURE_TYPE == "mfcc_prosody":
+        prosody_vectors = semitone_prosody(audio_filename)
+        mfcc_vectors = calculate_mfcc(audio_filename)
+        prosody_vectors, mfcc_vectors = shorten(prosody_vectors, mfcc_vectors)
+        input_vectors = np.concatenate([prosody_vectors, mfcc_vectors], axis=-1)
+        
 
     # Step 2: Vectorize BVH
     output_vectors = vectorize_bvh_to_rotation(gesture_filename)
+
+    # Check
+    # print(input_vectors.shape)
+    # print(output_vectors.shape)
 
     # Step 3: Align vector length
     input_vectors, output_vectors = shorten(input_vectors, output_vectors)
@@ -76,9 +93,9 @@ def parse_arg():
     parser = argparse.ArgumentParser()
     # parser.add_argument('--dataset-dir', default='/media/wu/database/speech-to-gesture-takekuchi-2017/split',
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--dataset-dir', default='./data/takekuchi/source',
+    parser.add_argument('--dataset-dir', default='./data/takekuchi/source/split',
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--data-dir', default='./data/takekuchi/processed',
+    parser.add_argument('--data-dir', default='./data/takekuchi/processed/mfcc_prosody',
                         help="Specify processed data save dir")
     return parser.parse_args()
 
