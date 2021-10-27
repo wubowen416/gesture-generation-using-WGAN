@@ -33,17 +33,20 @@ def vectorize_bvh_to_rotation(gesture_filename):
     # Deal with x rot of joint 'spine', rot_vec[:, 2]
     # Since there are positive degree and negative degree that represents save direction
     # In the distribution learning, model will interpolate between causing error results
-    # for frame_idx, rot_vec_frame in enumerate(org):
+    for frame_idx, rot_vec_frame in enumerate(org):
 
-    #     if rot_vec_frame[2] < 0:
+        if rot_vec_frame[2] < 0:
 
-    #         org[frame_idx, 2] += 360
+            org[frame_idx, 2] += 360
 
-    #     if rot_vec_frame[2] > 359:
+        if rot_vec_frame[2] > 359:
 
-    #         org[frame_idx, 2] -= 360
+            org[frame_idx, 2] -= 360
+
+    org = np.concatenate([org[:, :27], org[:, 72:84]], axis=1)
 
     # excluding fingers and hip and thigh
-    org = np.concatenate([org[:, 3:27], org[:, 72:84]], axis=1)
+    # org = np.concatenate([org[:, 3:27], org[:, 72:84]], axis=1)
+    
 
     return org
