@@ -37,9 +37,9 @@ if __name__ == "__main__":
     is_training = hparams.Infer.pre_trained == ""
     
     data = dataset_class(hparams, is_training)
-    speech_dim, motion_dim = data.get_dims()
+    cond_dim, motion_dim = data.get_dims()
 
-    model = model_class(speech_dim, motion_dim, hparams)
+    model = model_class(cond_dim, motion_dim, hparams)
     
     if is_training:
         if not os.path.exists(log_dir):
