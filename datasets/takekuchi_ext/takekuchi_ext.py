@@ -148,10 +148,13 @@ class Takekuchi_extDataset:
     def save_result(self, data, save_path):
         self.save_unity_result(data, save_path + '.txt')
 
-    def save_unity_result(self, data, save_path):
+    def save_unity_result(self, data, save_path, hip=False):
         os.makedirs(os.path.dirname(save_path), exist_ok=True) 
         # rescale
         data = self.motion_scaler.inverse_transform(data)
+        # Remove hip if true
+        if hip:
+            data = data[:, 3:]
         # Unitize
         unity_lines = transform(data)
         unity_lines = filter(unity_lines)

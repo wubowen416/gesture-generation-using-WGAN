@@ -160,8 +160,7 @@ class TestDataset(Dataset):
 
         # self.X = X
         # self.Y = Y
-        # One sample for each category 
-        X = np.repeat(np.array(X, dtype=object), k)
+        # One sample for each category
         onehot_label = np.eye(k)
         inputs = []
         for x in X:
