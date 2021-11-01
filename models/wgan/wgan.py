@@ -166,6 +166,7 @@ class ConditionalWGAN:
 
                     # Log
                     if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                    # if True:
                         print("generate samples")
                         # Generate result on dev set
                         output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
