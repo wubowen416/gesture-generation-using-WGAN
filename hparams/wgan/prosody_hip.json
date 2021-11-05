@@ -11,7 +11,7 @@
     },
 
     "Infer": {
-        "pre_trained": ""
+        "pre_trained": "/home/wu/repo/gesture-wgan/results/log_20211104_1719/chkpt/generator_232k.pt"
     },
 
     "Model": {
