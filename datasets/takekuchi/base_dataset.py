@@ -55,13 +55,13 @@ class TestDataset(Dataset):
 
     '''X and Y are lists of (T, dim) numpy array'''
 
-    def __init__(self, X, Y, chunklen, pastlen, stride=1):
+    def __init__(self, X, Y, chunklen, seedlen, stride=1):
 
         self.X = X
         self.Y = Y
 
         self.chunklen = chunklen
-        self.pastlen = pastlen
+        self.seedlen = seedlen
 
     def __len__(self):
         return len(self.X)
@@ -71,7 +71,7 @@ class TestDataset(Dataset):
         speech = self.X[idx]
         motion = self.Y[idx]
 
-        speech_chunks = chunkize(speech, self.chunklen, stride=self.chunklen-self.pastlen)
+        speech_chunks = chunkize(speech, self.chunklen, stride=self.chunklen-self.seedlen)
         speech_inputs = torch.from_numpy(speech_chunks).float()
         motion = torch.from_numpy(motion).float()
         return speech_inputs, motion

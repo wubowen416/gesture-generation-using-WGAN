@@ -4,7 +4,7 @@
 import socket
 
 server_ip = "localhost"
-server_port = 8081
+server_port = 8082
 listen_num = 1
 # buffer_size = 1024
 
@@ -37,4 +37,10 @@ while True:
         line = frame_number[i] + "\t" + line
         client.send(line.encode("utf-8"))
 
+        print(line)
+
+    client.send("0\n".encode("utf-8"))
+    
+    # break
     client.close()
+    

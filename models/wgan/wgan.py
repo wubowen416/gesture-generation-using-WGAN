@@ -211,6 +211,10 @@ class ConditionalWGAN:
         self.gen.eval()
         # Generate iteratively
         motion_chunks = []
+
+        if speech_chunks is not torch.Tensor:
+            speech_chunks = torch.Tensor(speech_chunks)
+
         seed = torch.zeros(size=(1, self.chunklen, self.output_dim)).to(self.device)
         for cond in speech_chunks.to(self.device):
             cond = cond.unsqueeze(0)
