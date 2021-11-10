@@ -44,5 +44,12 @@ data
 ### To visualize
 See https://github.com/wubowen416/unity_gesture_visualizer.
 
+## Extensions
+Some extensions of the model were developed.
+1. Automatic control of movement velocity and moving range.
+
+### Automatic control of movement velocity and moving range
+Using dataset of name takekuchi_ext.
+
 ## Contact
 For any questions, please contact wu.bowen@irl.sys.es.osaka-u.ac.jp
