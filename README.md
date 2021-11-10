@@ -4,6 +4,8 @@
 
 Official implementation for an upcoming workshop paper in ICMI2021.
 
+A preview of the paper can be found here https://openreview.net/forum?id=ykvm7OLh7B.
+
 ## Example
 
 ![A simple sample for wgan on TAKEKUCHI dataset](demo/cl34-dev8.gif)
@@ -37,7 +39,7 @@ data
         "pre_trained": "results/log_20210905_2217/chkpt/generator_232k.pt"
       },
       ```
-   2. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion in 'synthesized/' and KDE results.
+   2. Execute `python main.py wgan takekuchi hparams/wgan/paper_version.json` to obtain the generated motion in 'synthesized/' and the KDE results.
 
 ### To visualize
 See https://github.com/wubowen416/unity_gesture_visualizer.
