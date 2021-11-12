@@ -39,53 +39,95 @@ def kmeans_clustering(position_data, category, k):
         avg_max_amp = 0.5 * (left_amp_max + right_amp_max)
         return avg_max_amp
 
-    def extract_features(sample):
-        vel = velocity_sum(sample)
-        amp = avg_hand_amplitude(sample)
-        return [vel, amp]
+    def extract_vel_features(sample):
+        return [velocity_sum(sample)]
 
-    features = np.array(list(map(extract_features, position_data)))
-    features = StandardScaler().fit_transform(features)
+    def extract_amp_features(sample):
+        return [avg_hand_amplitude(sample)]
 
-    # Cluster use K-means
-    kmeans = MiniBatchKMeans(n_clusters=k, random_state=0, batch_size=20).fit(features)
+    vel_features = np.array(list(map(extract_vel_features, position_data)))
+    # vel_features = StandardScaler().fit_transform(vel_features)
+
+    amp_features = np.array(list(map(extract_amp_features, position_data)))
+    # amp_features = StandardScaler().fit_transform(amp_features)
+
+    def obtain_onehot_label(features):
+        # Cluster use K-means
+        kmeans = MiniBatchKMeans(n_clusters=k, random_state=0, batch_size=20).fit(features)
+
+        # Rename cluster index to category names
+        centers = kmeans.cluster_centers_
+        centers_norm = np.sum(centers, axis=1)
+        labels = [x for _, x in sorted(zip(centers_norm, list(range(k))))]
+
+        label_dict = {}
+        label_dict["low"] = labels[0]
+        label_dict["middle"] = labels[1]
+        label_dict["high"] = labels[2]
+
+        # Switch category name and index
+        # new_dict: 0: "high", 1:"middle", 2:"low"
+        new_dict = {}
+        for key, value in label_dict.items():
+            new_dict[value] = key
+        category_labels = [[new_dict[index]] for index in kmeans.labels_]
+
+        category_list = list(category.to_dict().keys())
+        enc = OneHotEncoder(categories=[category_list], sparse=False)
+        onehot_lables = enc.fit_transform(category_labels)
+        return onehot_lables
+
+    vel_onehot_labels = obtain_onehot_label(vel_features)
+    amp_onehot_labels = obtain_onehot_label(amp_features)
+    dual_onehot_labels = np.concatenate([vel_onehot_labels, amp_onehot_labels], axis=-1)
+    # Convert dual one-hot to single
+    # 0: high, 1: middle, 2: low
+    # 1st 3 columns are velocity, 2nd 3 columns are amplitude
+    situations = {
+        0: [1., 0., 0., 1., 0., 0.],
+        1: [0., 1., 0., 1., 0., 0.],
+        2: [0., 0., 1., 1., 0., 0.],
+        3: [1., 0., 0., 0., 1., 0.],
+        4: [0., 1., 0., 0., 1., 0.],
+        5: [0., 0., 1., 0., 1., 0.],
+        6: [1., 0., 0., 0., 0., 1.],
+        7: [0., 1., 0., 0., 0., 1.],
+        8: [0., 0., 1., 0., 0., 1.]
+    }
+
+    integer_labels = []
+    for label in dual_onehot_labels:
+        for key, value in situations.items():
+            if (label == value).all():
+                integer_labels.append(key)
+
+    # Convert to one-hot
+    onehot_labels = np.zeros(shape=(len(dual_onehot_labels), 9)) # 3 * 3 = 9
+    for i, label in enumerate(integer_labels[:3]):
+        onehot_labels[i, label] = 1.0
+
+    return onehot_labels
 
     # Plot clustering result
+    # color_map = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+    # colors = [color_map[i] for i in integer_labels]
+    # features = np.concatenate([vel_features, amp_features], axis=-1)
     # import matplotlib.pyplot as plt
     # import matplotlib
     # matplotlib.use('Agg')
     # import seaborn as sns
     # sns.set()
-    # colors = [['r','g','b'][label] for label in kmeans.labels_]
     # fig = plt.figure(dpi=100)
-    # plt.scatter(features[:, 0], features[:, 1], c=colors, alpha=0.1)
+    # plt.scatter(features[:, 0], features[:, 1], c=colors, alpha=1, s=0.05)
     # plt.tight_layout()
     # plt.xlabel("Amplitude")
     # plt.ylabel("Velocity")
     # plt.title("K-means clustered result")
     # plt.savefig("kmeans_clustered_result.jpg")
 
-    # Rename cluster index to category names
-    centers = kmeans.cluster_centers_
-    centers_norm = np.sum(centers, axis=1)
-    labels = [x for _, x in sorted(zip(centers_norm, list(range(k))))]
 
-    label_dict = {}
-    label_dict["low"] = labels[0]
-    label_dict["middle"] = labels[1]
-    label_dict["high"] = labels[2]
 
-    # Switch category name and index
-    # new_dict: 0: "high", 1:"middle", 2:"low"
-    new_dict = {}
-    for key, value in label_dict.items():
-        new_dict[value] = key
-    category_labels = [[new_dict[index]] for index in kmeans.labels_]
-
-    category_list = list(category.to_dict().keys())
-    enc = OneHotEncoder(categories=[category_list], sparse=False)
-    onehot_lables = enc.fit_transform(category_labels)
-    return onehot_lables
+    
 
 
 class TrainDataset(Dataset):
@@ -156,7 +198,7 @@ class TestDataset(Dataset):
 
     '''X and Y are lists of (T, dim) numpy array'''
 
-    def __init__(self, X, Y, chunklen, pastlen, stride=1, k=3):
+    def __init__(self, X, Y, chunklen, pastlen, stride=1, k=9):
 
         # self.X = X
         # self.Y = Y

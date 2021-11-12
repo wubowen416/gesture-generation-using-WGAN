@@ -78,7 +78,9 @@ class Takekuchi_extDataset:
         self.motion_scaler = jl.load(os.path.join(data_dir, 'motion_scaler.jl'))
 
         # N of categories
-        k = len(hparams.Data.extraversion.to_dict().keys())
+        # k = len(hparams.Data.extraversion.to_dict().keys())
+        k_level = 3
+        k_category = 2
 
         if is_training:
 
@@ -98,7 +100,7 @@ class Takekuchi_extDataset:
             #     train_input, train_output, test_size=hparams.Data.valid_ratio, random_state=2021)
 
             # Create pytorch dataset
-            self.train_dataset = TrainDataset(train_input, train_output, train_position, hparams.Data.chunklen, hparams.Data.seedlen, hparams.Data.extraversion, stride=1, k=k)
+            self.train_dataset = TrainDataset(train_input, train_output, train_position, hparams.Data.chunklen, hparams.Data.seedlen, hparams.Data.extraversion, stride=1, k=k_level)
             # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
             # Load dev data
@@ -110,7 +112,7 @@ class Takekuchi_extDataset:
             # scale
             dev_input = list(map(self.speech_scaler.transform, dev_input))
             dev_output = list(map(self.motion_scaler.transform, dev_output))
-            self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k)
+            self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level**k_category)
 
         else:
             # Load test data
@@ -121,9 +123,9 @@ class Takekuchi_extDataset:
 
             test_input = list(map(self.speech_scaler.transform, test_input))
             test_output = list(map(self.motion_scaler.transform, test_output))
-            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k)
+            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level**k_category)
 
-        self.input_dim = self.speech_scaler.mean_.shape[0] + k
+        self.input_dim = self.speech_scaler.mean_.shape[0] + k_level**k_category
         self.output_dim = self.motion_scaler.mean_.shape[0]
             
 
