@@ -5,7 +5,7 @@ Usage:
 import os
 import datetime
 from docopt import docopt
-from tools.config import JsonConfig
+from tools.Config import JsonConfig
 
 import datasets
 import models

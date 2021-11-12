@@ -19,7 +19,7 @@ def create_hierarchy_nodes():
         nodes: array of markers to be used in motion processing
     """
 
-    with open("tools/hierarchy.txt", 'r') as f:
+    with open("tools/takekuchi_dataset_tool/hierarchy.txt", 'r') as f:
         hierarchy = f.readlines()
 
 
@@ -156,6 +156,7 @@ def remove_extra_joints_in_pos(motion):
 
 def rot2pos(motion):
     '''
+    Check joint necessary for converting in "hierarchy.txt"
     2D to 2D
     '''
     nodes = create_hierarchy_nodes()

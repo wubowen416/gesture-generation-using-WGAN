@@ -1,0 +1,5 @@
+{
+    "server_ip": "localhost",
+    "port": 8081,
+    "encoding": "utf-8"
+}

@@ -2,9 +2,11 @@
 
 # 0.ライブラリのインポートと変数定義
 import socket
+import sys
+sys.path.append(".")
+from tools.Config import JsonConfig
 
-server_ip = "localhost"
-server_port = 8082
+config = JsonConfig("./tools/commu/config/tcpip.json")
 listen_num = 1
 # buffer_size = 1024
 
@@ -12,13 +14,13 @@ listen_num = 1
 tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # 2.作成したソケットオブジェクトにIPアドレスとポートを紐づける
-tcp_server.bind((server_ip, server_port))
+tcp_server.bind((config.server_ip, config.port))
 
 # 3.作成したオブジェクトを接続可能状態にする
 tcp_server.listen(listen_num)
 
 # load data
-with open('audio1109-rms.txt') as f:
+with open('./tools/commu/sample_data/audio1109-rms.txt') as f:
     lines = f.readlines()
 
 # 4.ループして接続を待ち続ける
