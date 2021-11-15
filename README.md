@@ -1,4 +1,4 @@
-# gesture-generation
+# gesture-generation-using-WGAN
 
 ## Introduction
 
