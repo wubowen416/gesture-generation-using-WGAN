@@ -11,34 +11,35 @@ def chunkize(x, chunklen, stride=1):
     return np.array([x[i_chunk * stride:(i_chunk * stride) + chunklen] for i_chunk in range(num_chunk)])
 
 
+def velocity_sum(sample):
+    '''sample of shape (T, dim)
+    Total velocity of all joints
+    '''
+    return np.sum(np.abs(sample[1:] - sample[:-1])) / sample.shape[0]
+
+def avg_hand_amplitude(sample):
+    '''sample of shape (T, dim)
+    Amplitude of hand position. [8] is left hand, [11] is right hand.
+    '''
+    sample = sample.reshape(-1, 12, 3)
+    # Calculate distance pairwisely
+    left_hand_data = sample[:][:, 8, :]
+    right_hand_data = sample[:][:, 11, :]
+
+    def pairwise_distance(data):
+        data_a = np.repeat(data[:, np.newaxis, :], data.shape[0], axis=1)
+        data_b = np.transpose(data_a, [1, 0, 2])
+        return np.sqrt(np.sum((data_a - data_b)**2, axis=-1))
+
+    left_amp_max = np.max(pairwise_distance(left_hand_data))
+    right_amp_max = np.max(pairwise_distance(right_hand_data))
+    avg_max_amp = 0.5 * (left_amp_max + right_amp_max)
+    return avg_max_amp
+
+
 def kmeans_clustering(position_data, category, k):
 
     # Extract features from data
-    def velocity_sum(sample):
-        '''sample of shape (T, dim)
-        Total velocity of all joints
-        '''
-        return np.sum(np.abs(sample[1:] - sample[:-1])) / sample.shape[0]
-
-    def avg_hand_amplitude(sample):
-        '''sample of shape (T, dim)
-        Amplitude of hand position. [8] is left hand, [11] is right hand.
-        '''
-        sample = sample.reshape(-1, 12, 3)
-        # Calculate distance pairwisely
-        left_hand_data = sample[:][:, 8, :]
-        right_hand_data = sample[:][:, 11, :]
-
-        def pairwise_distance(data):
-            data_a = np.repeat(data[:, np.newaxis, :], data.shape[0], axis=1)
-            data_b = np.transpose(data_a, [1, 0, 2])
-            return np.sqrt(np.sum((data_a - data_b)**2, axis=-1))
-
-        left_amp_max = np.max(pairwise_distance(left_hand_data))
-        right_amp_max = np.max(pairwise_distance(right_hand_data))
-        avg_max_amp = 0.5 * (left_amp_max + right_amp_max)
-        return avg_max_amp
-
     def extract_vel_features(sample):
         return [velocity_sum(sample)]
 

@@ -5,6 +5,8 @@ Usage:
 import os
 import datetime
 from docopt import docopt
+from pandas.core.frame import DataFrame
+from pandas.core.indexes import category
 from tools.config import JsonConfig
 
 import datasets
@@ -55,9 +57,11 @@ if __name__ == "__main__":
         # Customize
 
         # Generate result on test set
-        output_list, motion_list = model.synthesize_batch(data.get_test_dataset())
-        for i, output in enumerate(output_list):
-            data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"), hip=True)
+        # output_list, motion_list = model.synthesize_batch(data.get_test_dataset())
+        # for i, output in enumerate(output_list):
+        #     data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"), hip=True)
+
+
         # Evaluate KDE
         # import torch
         # from models.wgan.kde_score import calculate_kde
@@ -67,3 +71,67 @@ if __name__ == "__main__":
         # motion = data.motion_scaler.inverse_transform(motion)
         # kde_mean, _, kde_se = calculate_kde(output, motion)
         # print(kde_mean, kde_se)
+
+
+        # Save vel amp result
+        from tools.rot_to_pos import rot2pos
+        from datasets.takekuchi_ext.base_dataset_ext import velocity_sum, avg_hand_amplitude
+        import matplotlib
+        matplotlib.use("agg")
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        sns.set()
+        import pickle
+        import pandas as pd
+    
+
+        # value_list = []
+        # category_list = []
+        # attribute_list = []
+        
+        # for cate in range(9):
+        #     outputs = output_list[cate::9]
+        #     # Move to cpu
+        #     for i in range(len(outputs)):
+        #         outputs[i] = outputs[i].cpu().numpy()
+        #     eulers = list(map(data.motion_scaler.inverse_transform, outputs))
+        #     positions = list(map(rot2pos, eulers))
+        #     vels = list(map(velocity_sum, positions))
+        #     amps = list(map(avg_hand_amplitude, positions))
+
+        #     value_list += vels
+        #     attribute_list += ["vel"] * len(vels)
+        #     category_list += [str(cate)] * len(vels)
+
+        #     value_list += amps
+        #     attribute_list += ["amp"] * len(amps)
+        #     category_list += [str(cate)] * len(amps)
+
+        # data_dict = {
+        #     "value": value_list,
+        #     "attribute": attribute_list,
+        #     "category": category_list
+        # }
+
+        # df = pd.DataFrame(data_dict)
+        # df.to_csv("test.csv")
+
+        df = pd.read_csv("test.csv", index_col=0)
+
+        df = df[df["attribute"] == "amp"]
+
+        fig = plt.figure(dpi=150)
+        sns.boxplot(x="category", y="value", data=df)
+        plt.savefig("amp.jpg")
+
+
+        
+
+
+
+
+
+
+
+
+
