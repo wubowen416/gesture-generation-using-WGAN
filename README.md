@@ -44,5 +44,16 @@ data
 ## Visualization
 See https://github.com/wubowen416/unity_gesture_visualizer.
 
+## Citation
+To cite our work, you can use the following BibTex reference
+```
+@inproceedings{wu2021probabilistic,
+  title={Probabilistic human-like gesture synthesis from speech using GRU-based WGAN},
+  author={Wu, Bowen and Ishi, Carlos and Ishiguro, Hiroshi and others},
+  booktitle={GENEA: Generation and Evaluation of Non-verbal Behaviour for Embodied Agents Workshop 2021},
+  year={2021}
+}
+```
+
 ## Contact
 For any questions, please contact wu.bowen@irl.sys.es.osaka-u.ac.jp
