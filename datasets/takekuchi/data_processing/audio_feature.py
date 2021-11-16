@@ -8,7 +8,7 @@ from python_speech_features import mfcc
 def semitone_prosody(audio_filename):
 
     feature_filename = os.path.splitext(os.path.basename(audio_filename))[0] + '-rms.txt'
-    rms_path = '/media/wu/database/speech-to-gesture-takekuchi-2017/param'
+    rms_path = './data/takekuchi/source/speech_features'
     feature_path = os.path.join(rms_path, feature_filename)
     
     df = pd.read_table(feature_path)
