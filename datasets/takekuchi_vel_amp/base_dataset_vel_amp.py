@@ -40,11 +40,17 @@ def avg_hand_amplitude(sample):
 def kmeans_clustering(position_data, category, k):
 
     # Extract features from data
-    def extract_features(sample):
-        return [velocity_sum(sample), avg_hand_amplitude(sample)]
+    def extract_vel_features(sample):
+        return [velocity_sum(sample)]
 
-    features = np.array(list(map(extract_features, position_data)))
-    features = StandardScaler().fit_transform(features)
+    def extract_amp_features(sample):
+        return [avg_hand_amplitude(sample)]
+
+    vel_features = np.array(list(map(extract_vel_features, position_data)))
+    # vel_features = StandardScaler().fit_transform(vel_features)
+
+    amp_features = np.array(list(map(extract_amp_features, position_data)))
+    # amp_features = StandardScaler().fit_transform(amp_features)
 
     def obtain_onehot_label(features):
         # Cluster use K-means
@@ -72,13 +78,41 @@ def kmeans_clustering(position_data, category, k):
         onehot_lables = enc.fit_transform(category_labels)
         return onehot_lables
 
-    onehot_labels = obtain_onehot_label(features)
+    vel_onehot_labels = obtain_onehot_label(vel_features)
+    amp_onehot_labels = obtain_onehot_label(amp_features)
+    dual_onehot_labels = np.concatenate([vel_onehot_labels, amp_onehot_labels], axis=-1)
+    # Convert dual one-hot to single
+    # 0: high, 1: middle, 2: low
+    # 1st 3 columns are velocity, 2nd 3 columns are amplitude
+    situations = {
+        0: [1., 0., 0., 1., 0., 0.],
+        1: [0., 1., 0., 1., 0., 0.],
+        2: [0., 0., 1., 1., 0., 0.],
+        3: [1., 0., 0., 0., 1., 0.],
+        4: [0., 1., 0., 0., 1., 0.],
+        5: [0., 0., 1., 0., 1., 0.],
+        6: [1., 0., 0., 0., 0., 1.],
+        7: [0., 1., 0., 0., 0., 1.],
+        8: [0., 0., 1., 0., 0., 1.]
+    }
 
-    
+    integer_labels = []
+    for label in dual_onehot_labels:
+        for key, value in situations.items():
+            if (label == value).all():
+                integer_labels.append(key)
+
+    # Convert to one-hot
+    onehot_labels = np.zeros(shape=(len(dual_onehot_labels), 9)) # 3 * 3 = 9
+    for i, label in enumerate(integer_labels[:3]):
+        onehot_labels[i, label] = 1.0
+
+    return onehot_labels
 
     # Plot clustering result
     # color_map = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
-    # colors = [color_map[np.argmax(onehot)] for onehot in onehot_labels]
+    # colors = [color_map[i] for i in integer_labels]
+    # features = np.concatenate([vel_features, amp_features], axis=-1)
     # import matplotlib.pyplot as plt
     # import matplotlib
     # matplotlib.use('Agg')
@@ -90,11 +124,7 @@ def kmeans_clustering(position_data, category, k):
     # plt.xlabel("Amplitude")
     # plt.ylabel("Velocity")
     # plt.title("K-means clustered result")
-    # plt.savefig("test/kmeans_clustered_result_ext.jpg")
-
-    # assert 0
-
-    return onehot_labels
+    # plt.savefig("kmeans_clustered_result.jpg")
 
 
 
@@ -169,7 +199,7 @@ class TestDataset(Dataset):
 
     '''X and Y are lists of (T, dim) numpy array'''
 
-    def __init__(self, X, Y, chunklen, pastlen, stride=1, k=3):
+    def __init__(self, X, Y, chunklen, pastlen, stride=1, k=9):
 
         # self.X = X
         # self.Y = Y

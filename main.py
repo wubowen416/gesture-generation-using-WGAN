@@ -61,7 +61,6 @@ if __name__ == "__main__":
         # for i, output in enumerate(output_list):
         #     data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"), hip=True)
 
-
         # Evaluate KDE
         # import torch
         # from models.wgan.kde_score import calculate_kde
@@ -74,23 +73,23 @@ if __name__ == "__main__":
 
 
         # Save vel amp result
-        from tools.rot_to_pos import rot2pos
-        from datasets.takekuchi_ext.base_dataset_ext import velocity_sum, avg_hand_amplitude
-        import matplotlib
-        matplotlib.use("agg")
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        sns.set()
-        import pickle
-        import pandas as pd
+        # from tools.rot_to_pos import rot2pos
+        # from datasets.takekuchi_ext.base_dataset_ext import velocity_sum, avg_hand_amplitude
+        # import matplotlib
+        # matplotlib.use("agg")
+        # import matplotlib.pyplot as plt
+        # import seaborn as sns
+        # sns.set()
+        # import pickle
+        # import pandas as pd
     
 
         # value_list = []
         # category_list = []
         # attribute_list = []
         
-        # for cate in range(9):
-        #     outputs = output_list[cate::9]
+        # for cate in range(3):
+        #     outputs = output_list[cate::3]
         #     # Move to cpu
         #     for i in range(len(outputs)):
         #         outputs[i] = outputs[i].cpu().numpy()
@@ -116,13 +115,13 @@ if __name__ == "__main__":
         # df = pd.DataFrame(data_dict)
         # df.to_csv("test.csv")
 
-        df = pd.read_csv("test.csv", index_col=0)
+        # df = pd.read_csv("test.csv", index_col=0)
 
-        df = df[df["attribute"] == "amp"]
+        # df = df[df["attribute"] == "vel"]
 
-        fig = plt.figure(dpi=150)
-        sns.boxplot(x="category", y="value", data=df)
-        plt.savefig("amp.jpg")
+        # fig = plt.figure(dpi=150)
+        # sns.boxplot(x="category", y="value", data=df)
+        # plt.savefig("vel.jpg")
 
 
         

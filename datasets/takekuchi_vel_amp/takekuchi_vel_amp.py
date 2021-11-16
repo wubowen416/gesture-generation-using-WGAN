@@ -3,7 +3,7 @@ import os
 import pickle
 import joblib as jl
 from sklearn.model_selection import train_test_split
-from .base_dataset_ext import TrainDataset, TestDataset
+from .base_dataset_vel_amp import TrainDataset, TestDataset
 
 ### unity data
 from scipy.spatial.transform import Rotation as R
@@ -67,7 +67,7 @@ def write_unity(vector, save_path):
     line_prepender(save_path, prepend_line)
 ###
 
-class Takekuchi_extDataset:
+class Takekuchi_vel_ampDataset:
 
     def __init__(self, hparams, is_training):
 
@@ -80,6 +80,7 @@ class Takekuchi_extDataset:
         # N of categories
         # k = len(hparams.Data.extraversion.to_dict().keys())
         k_level = 3
+        k_category = 2
 
         if is_training:
 
@@ -111,7 +112,7 @@ class Takekuchi_extDataset:
             # scale
             dev_input = list(map(self.speech_scaler.transform, dev_input))
             dev_output = list(map(self.motion_scaler.transform, dev_output))
-            self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level)
+            self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level**k_category)
 
         else:
             # Load test data
@@ -122,9 +123,9 @@ class Takekuchi_extDataset:
 
             test_input = list(map(self.speech_scaler.transform, test_input))
             test_output = list(map(self.motion_scaler.transform, test_output))
-            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level)
+            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k_level**k_category)
 
-        self.input_dim = self.speech_scaler.mean_.shape[0] + k_level
+        self.input_dim = self.speech_scaler.mean_.shape[0] + k_level**k_category
         self.output_dim = self.motion_scaler.mean_.shape[0]
             
 
