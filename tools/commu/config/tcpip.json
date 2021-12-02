@@ -1,5 +1,14 @@
 {
-    "server_ip": "localhost",
-    "port": 8081,
-    "encoding": "utf-8"
+    "Data": {
+        "server_ip": "localhost",
+        "port": 8081,
+        "encoding": "utf-8"
+    },
+
+    "Commu": {
+        "server_ip": "irmouse02",
+        "port": 8078,
+        "encoding": "shift-jis",
+        "interval": 0.05
+    }
 }

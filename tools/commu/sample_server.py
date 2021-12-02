@@ -14,7 +14,7 @@ listen_num = 1
 tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # 2.作成したソケットオブジェクトにIPアドレスとポートを紐づける
-tcp_server.bind((config.server_ip, config.port))
+tcp_server.bind((config.Data.server_ip, config.Data.port))
 
 # 3.作成したオブジェクトを接続可能状態にする
 tcp_server.listen(listen_num)
@@ -39,7 +39,7 @@ while True:
         line = frame_number[i] + "\t" + line
         client.send(line.encode("utf-8"))
 
-        print(line)
+        # print(line)
 
     client.send("0\n".encode("utf-8"))
     

@@ -2,14 +2,29 @@
 Usage:
     main.py <model> <dataset> <hparams>
 """
-from genericpath import commonprefix
 import os
 from docopt import docopt
 from tools.Config import JsonConfig
 
 import datasets
 import models
-from tools.commu.functions import rotation2commucommand
+from tools.commu.Client import DataClient, CommuClient
+from tools.commu import functions as F
+from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
+
+
+def send_motion(motion, commu_client):
+    # Convert to position
+    position = rot2pos(motion)
+    # Calculate angle
+    rotation_data = F.calculate_rotation_for_shouder(position)
+    # Make Commu command
+    command = F.CommuCommand(rotation_data)
+    # command.to_csv('t.txt')
+    send_command = command.to_command()
+    # send motion via tcp/ip
+    commu_client.sendall(send_command)
+
 
 
 if __name__ == "__main__":
@@ -38,11 +53,9 @@ if __name__ == "__main__":
     model.build(chkpt_path=hparams.Infer.pre_trained)
 
     # Commu
-    from tools.commu.Client import GeneratorClient
-    from tools.commu import functions as F
-    from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
-
-    client = GeneratorClient()
+    data_client = DataClient()
+    commu_client = CommuClient()
+    commu_client.reset_pose()
     GENERATED_FLAG = False
 
     current_line = ""
@@ -54,7 +67,7 @@ if __name__ == "__main__":
     while True:
 
         # Receive a char every time
-        received_char = client.receive(size=1)
+        received_char = data_client.receive(size=1)
 
         # Current line isn't end
         if received_char != "\n":
@@ -87,29 +100,19 @@ if __name__ == "__main__":
                     if i == 0:
                         output_motion, seed = F.generate(model, seed, cond, data, interpolate=False)
                         motion = output_motion[:sendlen, :]
-
-                        # Convert to position
-                        position = rot2pos(motion)
-                        # Calculate angle
-                        rotation_data = F.calculate_rotation_for_shouder(position)
-                        # Make Commu command
-                        F.rotation2commucommand(rotation_data)
-                        # send motion via tcp/ip
-                        print("Send first chunk.")
+                        send_motion(motion, commu_client)
 
                     # Middle chunks
                     elif i != len(speech_chunks)-1:
                         output_motion, seed = F.generate(model, seed, cond, data, interpolate=True)
                         motion = output_motion[:sendlen, :]
-                        # send motion via tcp/ip
-                        print("Send to server middle chunk.")
+                        send_motion(motion, commu_client)
                     
                     # Last chunk
                     else:
                         output_motion, _ = F.generate(model, seed, cond, data, interpolate=True)
                         motion = output_motion
-                        # send motion via tcp/ip
-                        print("Send to server last chunk.")
+                        send_motion(motion, commu_client)
             
             # Reset line for next line
             current_line = ""

@@ -161,138 +161,212 @@ def calculate_rotation_for_shouder(position):
     return data
 
 
-def rotation2commucommand(data):
+class CommuCommand:
 
-    # tate
+    def __init__(self, data):
 
-    left_tate_euler = data["left"]["alpha"]
-    right_tate_euler = data["right"]["alpha"]
+        self.command = '/movemulti'
 
-    left_tate_euler[left_tate_euler > 180] = 180
-    left_tate_euler[right_tate_euler < 0] = 0
-    right_tate_euler[right_tate_euler > 180] = 180
-    right_tate_euler[right_tate_euler < 0] = 0
+        # tate
 
-    left_tate_euler[left_tate_euler < 90] = 90 - left_tate_euler[left_tate_euler < 90]
-    left_tate_euler[left_tate_euler > 90] = -(left_tate_euler[left_tate_euler > 90] - 90)
-    right_tate_euler[right_tate_euler < 90] = 90 - right_tate_euler[right_tate_euler < 90]
-    right_tate_euler[right_tate_euler > 90] = -(right_tate_euler[right_tate_euler > 90] - 90)
+        left_tate_euler = data["left"]["alpha"]
+        right_tate_euler = data["right"]["alpha"]
+
+        left_tate_euler[left_tate_euler > 180] = 180
+        left_tate_euler[right_tate_euler < 0] = 0
+        left_tate_euler[left_tate_euler < 90] = - (90 - left_tate_euler[left_tate_euler < 90])
+        left_tate_euler[left_tate_euler > 90] = left_tate_euler[left_tate_euler > 90] - 90
+
+
+        right_tate_euler[right_tate_euler > 180] = 180
+        right_tate_euler[right_tate_euler < 0] = 0
+        right_tate_euler[right_tate_euler < 90] = 90 - right_tate_euler[right_tate_euler < 90]
+        right_tate_euler[right_tate_euler > 90] = -(right_tate_euler[right_tate_euler > 90] - 90)
+
+        
+        # yoko
+        # left
+        left_yoko_euler = data["left"]["beta"]
+        assert np.all(left_yoko_euler >= 0), "yoko euler must be above 0."
+
+        left_yoko_euler[left_yoko_euler < 180] = left_yoko_euler[left_yoko_euler < 180] - 180
+        left_yoko_euler[left_yoko_euler > 180] = left_yoko_euler[left_yoko_euler > 180] - 180
+        left_yoko_euler[left_yoko_euler < -45] = -45
+        left_yoko_euler[left_yoko_euler > 25] = 25
+
+        # right
+        right_yoko_euler = data["right"]["beta"]
+        assert np.all(right_yoko_euler >= 0), "yoko euler must be above 0."
+        right_yoko_euler -= 180
+
+        right_yoko_euler[right_yoko_euler > 45] = 45
+        right_yoko_euler[right_yoko_euler < -25] = -25
+
+        # Collide with body
+        # 2-A left hand
+        def f(x):
+            return -0.75 * x + 37.5
+        def inv_f(y):
+            return (37.5 - y) / 0.75
+
+        for i, (x, y) in enumerate(zip(left_tate_euler, left_yoko_euler)):
+
+            if x > 10 and x < 50 and y > 0:
+                y_of_x = f(x)
+                if y >= y_of_x: # Above the line
+                    x_of_y = inv_f(y)
+                    y = (y + y_of_x) / 2
+                    x = (x + x_of_y) / 2
+
+            if x >= 50 and y > 0:
+                y = 0
+            
+            if x < -40 and y > 40:
+                x_dis = -x - 40
+                y_dis = y - 40
+                if x_dis < y_dis:
+                    x = -40
+                else:
+                    y = 40
+
+            left_tate_euler[i] = int(x)
+            left_yoko_euler[i] = int(y)
+
+        # 2-B right hand
+        def f(x):
+            return -0.75 * x - 37.5
+        def inv_f(y):
+            return -(37.5 + y) / 0.75
+
+        for i, (x, y) in enumerate(zip(right_tate_euler, right_yoko_euler)):
+
+            if x < -50 and y < 0 :
+                y = 0
+
+            if x < -10 and y < 0 and x > -50:
+                y_of_x = f(x)
+                if y <= y_of_x: # Above the line
+                    x_of_y = inv_f(y)
+                    y = (y + y_of_x) / 2
+                    x = (x + x_of_y) / 2
+            
+            if x > 40 and y < -40:
+                x_dis = x - 40
+                y_dis = - y - 40
+                if x_dis < y_dis:
+                    x = 40
+                else:
+                    y = -40
+            
+            right_yoko_euler[i] = int(y)
+            right_tate_euler[i] = int(x)
+
+        # import matplotlib.pyplot as plt
+        # import matplotlib
+        # matplotlib.use("agg")
+        # plt.plot(right_yoko_euler)
+        # plt.savefig("t.jpg")
+
+        # Make commu command
+        # Write command
+        MAX_SPEED = 50
+        DENOMINATOR = 5
+        SEND_FPS = 10
+        length = len(left_tate_euler)
+        sheet = np.full(shape=(14, length), fill_value=-10000, dtype=int)
+
+        lines = []
+
+        for i in range(length):
+
+            line = self.command
+
+            if i == 0:
+                speed_2 = MAX_SPEED
+                speed_3 = MAX_SPEED
+                speed_4 = MAX_SPEED
+                speed_5 = MAX_SPEED
+
+            else:
+                speed_2 = int(np.abs((left_tate_euler[i] - left_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+                speed_3 = int(np.abs((left_yoko_euler[i] - left_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+                speed_4 = int(np.abs((right_tate_euler[i] - right_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+                speed_5 = int(np.abs((right_yoko_euler[i] - right_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+
+            if speed_2 != 0:
+                line += f" 2 {int(left_tate_euler[i])} {int(speed_2)}"
+                sheet[2, i] = left_tate_euler[i]
+
+            if speed_3 != 0:
+                line += f" 3 {int(left_yoko_euler[i])} {int(speed_3)}"
+                sheet[3, i] = left_yoko_euler[i]
+
+            if speed_4 != 0:
+                line += f" 4 {int(right_tate_euler[i])} {int(speed_4)}"
+                sheet[4, i] = right_tate_euler[i]
+
+            if speed_5 != 0:
+                # line += f" 5 {right_yoko_euler[i]} {speed_5}"
+                # sheet[5, i] = right_yoko_euler[i]
+                pass
+
+            if speed_2 == 0 and speed_3 == 0 and speed_4 == 0 and speed_5 == 0:
+                line = "skip"
+                pass
+
+            if speed_2 == 0:
+                if i == 0:
+                    sheet[2, i] = 90
+                else:
+                    sheet[2, i-1] = left_tate_euler[i-1]
+            if speed_3 == 0:
+                if i == 0:
+                    sheet[3, i] = 0
+                # else:
+                #     sheet[3, i-1] = left_yoko_euler[i-1]
+            if speed_4 == 0:
+                if i == 0:
+                    sheet[4, i] = -90
+                else:
+                    sheet[4, i-1] = right_tate_euler[i-1]
+            if speed_5 == 0:
+                if i == 0:
+                    sheet[4, i] = 0
+                # else:
+                #     sheet[5, i-1] = right_yoko_euler[i-1]
+
+            lines.append(line + "\n")
+
+        self.sheet = sheet.T
+        self.command = lines
+
+    def to_csv(self, output_path):
+
+        # Write to csv
+        np.savetxt(output_path, self.sheet.astype(int), delimiter="\t", fmt='%i')
+
+        # Prepend header
+        line_0 = "comment:2nd row is default values: 3rd is axis number: 4th are motion inverval, motion steps, motion axes"
+        line_1 = "0\t0\t90\t0\t-90\t0\t0\t0\t0\t0\t0\t0\t-5\t0"
+        line_2 = "0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13"
+        line_3 = "10\t{}\t14".format(len(self.sheet))
+        prepend_line(output_path, line_3)
+        prepend_line(output_path, line_2)
+        prepend_line(output_path, line_1)
+        prepend_line(output_path, line_0)
+
+        # Append last line
+        # Open a file with access mode 'a'
+        last_line = "*" + " 111" * 14
+        with open(output_path, "a") as f:
+        # Append 'hello' at the end of file
+            f.write(last_line)
+
+    def to_command(self):
+        return self.command
 
     
-    # yoko
-    # left
-    left_yoko_euler = data["left"]["beta"]
-    left_yoko_euler[left_yoko_euler > 180] = 180
-    left_yoko_euler[left_yoko_euler < 0] = 0
-    left_yoko_euler[left_yoko_euler < 90] = 90 - left_yoko_euler[left_yoko_euler < 90]
-    left_yoko_euler[left_yoko_euler > 90] = - (left_yoko_euler[left_yoko_euler > 90] - 90)
-    left_yoko_euler[left_yoko_euler < -45] = -45
-    left_yoko_euler[left_yoko_euler > 25] = 25
 
-    # right
-    right_yoko_euler = data["right"]["beta"]
-    right_yoko_euler[right_yoko_euler < 180] = 180
-    right_yoko_euler[right_yoko_euler < 270] = - (270 - right_yoko_euler[right_yoko_euler < 270])
-    right_yoko_euler[right_yoko_euler > 270] = right_yoko_euler[right_yoko_euler > 270] - 270
-    right_yoko_euler[right_yoko_euler < -45] = -45
-    right_yoko_euler[right_yoko_euler > 25] = 25
-
-
-    # import matplotlib.pyplot as plt
-    # import matplotlib
-    # matplotlib.use("agg")
-    # plt.plot(right_yoko_euler)
-    # plt.savefig("t.jpg")
-
-    # Make commu command
-    # Write command
-    MAX_SPEED = 50
-    DENOMINATOR = 5
-    SEND_FPS = 10
-    length = len(left_tate_euler)
-    sheet = np.full(shape=(14, length), fill_value=-10000, dtype=int)
-
-    # lines = []
-
-    for i in range(length):
-
-        # line = self.command
-
-        if i == 0:
-            speed_2 = MAX_SPEED
-            speed_3 = MAX_SPEED
-            speed_4 = MAX_SPEED
-            speed_5 = MAX_SPEED
-
-        else:
-            speed_2 = int(np.abs((left_tate_euler[i] - left_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-            speed_3 = int(np.abs((left_yoko_euler[i] - left_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-            speed_4 = int(np.abs((right_tate_euler[i] - right_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-            speed_5 = int(np.abs((right_yoko_euler[i] - right_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-
-        if speed_2 != 0:
-            # line += f" 2 {left_tate_euler[i]} {speed_2}"
-            sheet[2, i] = left_tate_euler[i]
-
-        if speed_3 != 0:
-            # line += f" 3 {left_yoko_euler[i]} {speed_3}"
-            sheet[3, i] = left_yoko_euler[i]
-
-        if speed_4 != 0:
-            # line += f" 4 {right_tate_euler[i]} {speed_4}"
-            sheet[4, i] = right_tate_euler[i]
-
-        if speed_5 != 0:
-            # line += f" 5 {right_yoko_euler[i]} {speed_5}"
-            sheet[5, i] = right_yoko_euler[i]
-
-        # if speed_2 == 0 and speed_3 == 0 and speed_4 == 0 and speed_5 == 0:
-            # line = "skip"
-            # pass
-
-        if speed_2 == 0:
-            if i == 0:
-                sheet[2, i] = 80
-            else:
-                sheet[2, i-1] = left_tate_euler[i-1]
-        if speed_3 == 0:
-            if i == 0:
-                sheet[3, i] = -4
-            else:
-                sheet[3, i-1] = left_yoko_euler[i-1]
-        if speed_4 == 0:
-            if i == 0:
-                sheet[4, i] = -80
-            else:
-                sheet[4, i-1] = right_tate_euler[i-1]
-        if speed_5 == 0:
-            if i == 0:
-                sheet[4, i] = 4
-            else:
-                sheet[5, i-1] = right_yoko_euler[i-1]
-
-    sheet = sheet.T
-
-    # Write to file
-    output_path = "t.txt"
-    np.savetxt(output_path, sheet.astype(int), delimiter="\t", fmt='%i')
-
-    # Prepend header
-    line_0 = "comment:2nd row is default values: 3rd is axis number: 4th are motion inverval, motion steps, motion axes"
-    line_1 = "0\t0\t80\t-4\t-80\t4\t0\t0\t0\t0\t0\t0\t-5\t0"
-    line_2 = "0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13"
-    line_3 = "10\t{}\t14".format(len(sheet))
-    prepend_line(output_path, line_3)
-    prepend_line(output_path, line_2)
-    prepend_line(output_path, line_1)
-    prepend_line(output_path, line_0)
-
-    # Append last line
-    # Open a file with access mode 'a'
-    last_line = "*" + " 111" * 14
-    with open(output_path, "a") as f:
-    # Append 'hello' at the end of file
-        f.write(last_line)
 
 
 

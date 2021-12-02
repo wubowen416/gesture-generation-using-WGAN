@@ -4,6 +4,8 @@
 
 Official implementation for an upcoming workshop paper in ICMI2021.
 
+This branch is for mapping the generated motion to CommU.
+
 ## Example
 
 ![A simple sample for wgan on TAKEKUCHI dataset](demo/cl34-dev8.gif)
