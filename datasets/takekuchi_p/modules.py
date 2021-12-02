@@ -1,13 +1,27 @@
 import numpy as np
 from torch.utils.data import Dataset
-import torch
 
 
-def chunkize(x, chunklen, stride=1):
-    num_chunk = (x.shape[0] - chunklen) // stride + 1
-    return np.array([x[i_chunk * stride:(i_chunk * stride) + chunklen] for i_chunk in range(num_chunk)])
+class TrainDataset(Dataset):
 
+    def __init__(self, features, motions, chunk_len, seed_len):
 
-class TrainDataset:
+        super().__init__()
 
-    def __init__(self, X, Y):
+        indexs = [i for i, x in enumerate(features) if x.shape[0] > chunk_len + seed_len]
+        features = [features[i] for i in indexs]
+        motions = [motions[i] for i in indexs]
+
+        self.features = features
+        self.motions = motions
+
+    def __len__(self):
+        return len(self.features)
+
+    def __getitem__(self, index):
+        return dict(
+            feature = self.features[index],
+            motion = self.motions[index]
+        )
+
+        

@@ -3,12 +3,18 @@ import os
 import pickle
 import joblib as jl
 from sklearn.model_selection import train_test_split
-from .modules import TrainDataset, TestDataset
+from .modules import TrainDataset
+import torch
 
 ### unity data
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 from scipy.signal import butter,filtfilt
+
+import sys
+sys.path.append('.')
+from tools.functions import chunkize
+
 
 def butter_lowpass_filter(data):
     # Params ajusted for this dataset
@@ -81,19 +87,58 @@ class TakekuchiPrevDataset:
 
             # Load data and scale
             with open(os.path.join(data_dir, "X_train.p"), 'rb') as f:
-                train_input = pickle.load(f)
+                features = pickle.load(f)
             with open(os.path.join(data_dir, "Y_train.p"), 'rb') as f:
-                train_output = pickle.load(f)
+                motions = pickle.load(f)
 
-            train_input = list(map(self.speech_scaler.transform, train_input))
-            train_output = list(map(self.motion_scaler.transform, train_output))
+            features = list(map(self.speech_scaler.transform, features))
+            motions = list(map(self.motion_scaler.transform, motions))
 
             # Split validation 
             # train_input, val_input, train_output, val_output = train_test_split(
             #     train_input, train_output, test_size=hparams.Data.valid_ratio, random_state=2021)
 
             # Create pytorch dataset
-            self.train_dataset = TrainDataset(train_input, train_output, hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
+            self.train_dataset = TrainDataset(features, motions, hparams.Data.chunklen, hparams.Data.seedlen)
+
+            from torch.utils.data import DataLoader
+            from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
+
+            # def collate_fn(batch):
+            #     X, Y = [], []
+            #     for data in batch:
+            #         X.append(data['feature'])
+            #         Y.append(data['motion'])
+
+            #     # Sort
+            #     L = [len(x) for x in X]
+            #     X = [x for x, _ in reversed(sorted(zip(L, X), key=lambda pair: pair[0]))]
+            #     Y = [y for y, _ in reversed(sorted(zip(L, Y), key=lambda pair: pair[0]))]
+            #     L_pt = torch.Tensor(reversed(sorted(L)))
+
+            #     # padding
+            #     X_paded = pad_sequence(X, batch_first=True)
+            #     Y_paded = pad_sequence(Y, batch_first=True)
+
+            # ! Generator generate noise by itself
+            # ! padding in model, pack before rnn
+
+
+
+                
+
+            loader = DataLoader(self.train_dataset, batch_size=8, shuffle=True,  collate_fn=collate_fn)
+
+            for data in loader:
+                pass
+
+                assert 0
+
+
+
+
+
+
             # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
             # Load dev data
