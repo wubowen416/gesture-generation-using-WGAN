@@ -8,3 +8,6 @@ def chunkize(x, chunklen, stride=1):
     return np.array([x[i_chunk * stride:(i_chunk * stride) + chunklen] for i_chunk in range(num_chunk)])
 
 
+class TrainDataset:
+
+    def __init__(self, X, Y):
