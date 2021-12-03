@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from jit_gru import JitGRU
 
 
 def get_linear_block(input_size, output_size):
@@ -46,7 +47,7 @@ class Mixer(nn.Module):
         x = torch.cat([x_mp, x_ne], dim=2)
 
         x, _ = self.mix(x)
-        x_ne = F.layer_norm(x, x.size()[1:])
+        x = F.layer_norm(x, x.size()[1:])
         x = x[:, :, :x.size(2)//2] + x[:, :, x.size(2)//2:]  # sum bidirectional outputs
         x = self.drop(x)
 
@@ -109,8 +110,10 @@ class HistNet(nn.Module):
         if self.smoothing == 'interpolation':
             x = self.interpolate(x)
 
-        
-
+        # Set padding parts to zero
+        for i, l in enumerate(lengths):
+            x[i, int(l):] = 0
+        return x
 
     def interpolate(self, x):
         ''' Interpolate between chunks.
@@ -132,20 +135,36 @@ class HistNet(nn.Module):
                 output = torch.cat([output, trans_motion, x[:, i][:, self.prev_size:self.chunk_size-self.prev_size]], dim=1)
             else: # last chunk
                 output = torch.cat([output, trans_motion, x[:, i][:, self.prev_size:self.chunk_size]], dim=1)
-
         return output
-
-
-
-
-
-    
-        
 
     def padding(self, x, time_step):
         padding = torch.zeros(x.size(0), x.size(1), time_step-x.size(2), x.size(3)).to(self.device)
         return torch.cat([x, padding], dim=2)
 
+
+class Discriminator(nn.Module):
+
+    def __init__(self, cond_size, output_size, hidden_size, num_layers=1, bidirectional=True, dropout=0):
+        super().__init__()
+
+        self.ce = get_linear_block(cond_size, hidden_size//2)
+        self.me = get_linear_block(output_size, hidden_size//2)
+        self.gru = JitGRU(hidden_size, hidden_size, num_layers=num_layers, bidirectional=bidirectional, dropout=dropout, batch_first=True)
+        self.out = nn.Linear(hidden_size, 1)
+
+    def forward(self, cond, input):
+
+        x_cond = self.ce(cond)
+        x_input = self.me(input)
+
+        x = torch.cat([x_cond, x_input], dim=-1)
+
+        x, _ = self.gru(x)
+
+        x = x.mean(dim=[1, 2])
+
+        return x
+        
 
 
 
@@ -156,8 +175,6 @@ if __name__ == '__main__':
     m_prev = torch.zeros(5, 20, 4, 36)
     num_chunks = torch.Tensor([20, 20, 10, 5, 3])
     lengths = 2 * 4 + (34 - 4) * num_chunks
-    print(lengths)
-    assert 0
 
     mixer_param = dict(
         hidden_size = 256,
@@ -169,5 +186,10 @@ if __name__ == '__main__':
     )
 
     net = HistNet(cond_size=2, output_size=36, hidden_size=128, chunk_size=34, prev_size=4, smoothing='interpolation', mixer_param=mixer_param)
+    disc = Discriminator(cond_size=2, output_size=36, hidden_size=256)
 
-    net(cond, m_prev, num_chunks, lengths)
+    outputs = net(cond, m_prev, num_chunks, lengths)
+
+    cond_ori = torch.zeros(5, outputs.size(1), 2)
+
+    disc(cond_ori, outputs)
