@@ -100,45 +100,6 @@ class TakekuchiPrevDataset:
 
             # Create pytorch dataset
             self.train_dataset = TrainDataset(features, motions, hparams.Data.chunklen, hparams.Data.seedlen)
-
-            from torch.utils.data import DataLoader
-            from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
-
-            # def collate_fn(batch):
-            #     X, Y = [], []
-            #     for data in batch:
-            #         X.append(data['feature'])
-            #         Y.append(data['motion'])
-
-            #     # Sort
-            #     L = [len(x) for x in X]
-            #     X = [x for x, _ in reversed(sorted(zip(L, X), key=lambda pair: pair[0]))]
-            #     Y = [y for y, _ in reversed(sorted(zip(L, Y), key=lambda pair: pair[0]))]
-            #     L_pt = torch.Tensor(reversed(sorted(L)))
-
-            #     # padding
-            #     X_paded = pad_sequence(X, batch_first=True)
-            #     Y_paded = pad_sequence(Y, batch_first=True)
-
-            # ! Generator generate noise by itself
-            # ! padding in model, pack before rnn
-
-
-
-                
-
-            loader = DataLoader(self.train_dataset, batch_size=8, shuffle=True,  collate_fn=collate_fn)
-
-            for data in loader:
-                pass
-
-                assert 0
-
-
-
-
-
-
             # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
             # Load dev data
@@ -150,7 +111,7 @@ class TakekuchiPrevDataset:
             # scale
             dev_input = list(map(self.speech_scaler.transform, dev_input))
             dev_output = list(map(self.motion_scaler.transform, dev_output))
-            self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen)
+            self.dev_dataset = TrainDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
         else:
             # Load test data
@@ -161,7 +122,7 @@ class TakekuchiPrevDataset:
 
             test_input = list(map(self.speech_scaler.transform, test_input))
             test_output = list(map(self.motion_scaler.transform, test_output))
-            self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen)
+            self.test_dataset = TrainDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
         self.speech_dim = self.speech_scaler.mean_.shape[0]
         self.motion_dim = self.motion_scaler.mean_.shape[0]
