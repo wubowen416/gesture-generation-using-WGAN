@@ -88,9 +88,12 @@ def calculate_rotation_for_shouder(position):
     # Left
     shoulder_index = 6
     hand_index = 8
-    shouder_position = position[:, shoulder_index, :]
+    shoulder_position = position[:, shoulder_index, :]
+
+    shoulder_position[:, 1] += 5
+
     hand_position = position[:, hand_index, :]
-    direction_vector = normalize(hand_position - shouder_position)
+    direction_vector = normalize(hand_position - shoulder_position)
 
     xs, ys, zs = direction_vector[:, 0], direction_vector[:, 1], direction_vector[:, 2]
 
@@ -126,9 +129,12 @@ def calculate_rotation_for_shouder(position):
     # Right
     shoulder_index = 9
     hand_index = 11
-    shouder_position = position[:, shoulder_index, :]
+    shoulder_position = position[:, shoulder_index, :]
+
+    shoulder_position[:, 1] -= 5
+
     hand_position = position[:, hand_index, :]
-    direction_vector = normalize(hand_position - shouder_position)
+    direction_vector = normalize(hand_position - shoulder_position)
 
     xs, ys, zs = direction_vector[:, 0], direction_vector[:, 1], direction_vector[:, 2]
 
@@ -270,8 +276,8 @@ class CommuCommand:
         # Make commu command
         # Write command
         MAX_SPEED = 50
-        DENOMINATOR = 5
-        SEND_FPS = 10
+        DENOMINATOR = 20
+        SEND_FPS = 20
         length = len(left_tate_euler)
         sheet = np.full(shape=(14, length), fill_value=-10000, dtype=int)
 
@@ -306,9 +312,8 @@ class CommuCommand:
                 sheet[4, i] = right_tate_euler[i]
 
             if speed_5 != 0:
-                # line += f" 5 {right_yoko_euler[i]} {speed_5}"
-                # sheet[5, i] = right_yoko_euler[i]
-                pass
+                line += f" 5 {int(right_yoko_euler[i])} {int(speed_5)}"
+                sheet[5, i] = right_yoko_euler[i]
 
             if speed_2 == 0 and speed_3 == 0 and speed_4 == 0 and speed_5 == 0:
                 line = "skip"

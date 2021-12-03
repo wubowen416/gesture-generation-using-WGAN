@@ -16,15 +16,15 @@ sns.set()
 lines = [
         [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],
         [3, 6], [6, 7], [7, 8],
-        [3, 9], [9, 10], [10, 11],
+        [3, 9], [9, 10], [10, 11]
     ]
 
 def plot_position_3D(motion, path, mode):
 
-    print(f'[plot_gif.func] Plotting with length {motion.shape[0]}')
+    print(f'Plotting with length {motion.shape[0]}')
     
     def update_graph(num):
-        x, y, z = motion[num][2::3], motion[num][0::3], motion[num][1::3]
+        x, y, z = motion[num][::3], motion[num][1::3], motion[num][2::3]
         graph._offsets3d = (x, y, z)
         title.set_text('3D Test, step={}'.format(num))
 
@@ -42,7 +42,7 @@ def plot_position_3D(motion, path, mode):
     graph = ax.scatter([], [], [], c='b', s=5, alpha=1)
     graph_lines = [ax.plot([], [], [], c='b') for i, _ in enumerate(lines)]
 
-    ax.view_init(10, -40)
+    ax.view_init(0, 0)
     ax.set_ylim(-50, 50)
     ax.set_zlim(0, 100)
     ax.set_xlim(-50, 50)
@@ -66,6 +66,4 @@ if __name__ == "__main__":
 
     motion = np.load(args.npy_path)
 
-    assert len(motion.shape) == 3, "Shape of motion must be (T, 10, 3)"
-
-    plot_position_3D(motion.reshape(-1, 30), args.save_path, args.mode)
+    plot_position_3D(motion.reshape(-1, 36), args.save_path, args.mode)

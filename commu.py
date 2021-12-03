@@ -12,6 +12,11 @@ from tools.commu.Client import DataClient, CommuClient
 from tools.commu import functions as F
 from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
+import numpy as np
+import torch
+np.random.seed(1)
+torch.manual_seed(1)
+
 
 def send_motion(motion, commu_client):
     # Convert to position
@@ -20,10 +25,12 @@ def send_motion(motion, commu_client):
     rotation_data = F.calculate_rotation_for_shouder(position)
     # Make Commu command
     command = F.CommuCommand(rotation_data)
-    # command.to_csv('t.txt')
+    command.to_csv('t.txt')
     send_command = command.to_command()
     # send motion via tcp/ip
     commu_client.sendall(send_command)
+
+    return position
 
 
 
@@ -93,6 +100,7 @@ if __name__ == "__main__":
                 speech_chunks = F.data_preprocess(lines, data, hparams)
 
                 # Generate
+                positions = []
                 sendlen, speech_chunks, seed = F.prepare_generation(model, speech_chunks)
                 for i, cond in enumerate(speech_chunks):
 
@@ -100,19 +108,21 @@ if __name__ == "__main__":
                     if i == 0:
                         output_motion, seed = F.generate(model, seed, cond, data, interpolate=False)
                         motion = output_motion[:sendlen, :]
-                        send_motion(motion, commu_client)
 
                     # Middle chunks
                     elif i != len(speech_chunks)-1:
                         output_motion, seed = F.generate(model, seed, cond, data, interpolate=True)
                         motion = output_motion[:sendlen, :]
-                        send_motion(motion, commu_client)
                     
                     # Last chunk
                     else:
                         output_motion, _ = F.generate(model, seed, cond, data, interpolate=True)
                         motion = output_motion
-                        send_motion(motion, commu_client)
+                        
+                    position = send_motion(motion, commu_client)
+                    positions.append(position)
+
+                np.save('t.npy', np.concatenate(positions, axis=0))
             
             # Reset line for next line
             current_line = ""
