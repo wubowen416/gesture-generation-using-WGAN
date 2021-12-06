@@ -240,21 +240,18 @@ class AttentionHistNet(nn.Module):
 
             output = self.step(input_0, input_1)
 
-            print(output.shape)
+            if step == 10:
+                print(self.memo_strength)
+                assert 0
 
 
     def step(self, input_0, input_1):
-
         # Current step information
         x_0 = self.f_input_0(input_0)
-
         x_1, _ = self.f_input_1(input_1)
         x_1 = x_1[:, :, :x_1.size(2)//2] + x_1[:, :, x_1.size(2)//2:] # sum bi-directional
         x_1 = x_1.mean(dim=1) # mean over time dim
-
         x = torch.cat([x_0, x_1.unsqueeze(1).repeat(1, x_0.size(1), 1)], dim=-1)
-
-        print("x size: ", x.size())
 
         # Attention information
         query, key, value = self.f_qkv(input_0, input_1)
@@ -264,30 +261,31 @@ class AttentionHistNet(nn.Module):
         weights = F.softmax(weights / torch.sqrt(torch.Tensor([self.hidden_size]).to(self.device)), dim=2).squeeze(1)
 
         # Update memo
-        self.update_memo_strength(value)
+        self._update_memo_strength(value)
 
-        # Weighted sum
+        # Weighted sum attention and memo strength
         memory = (.5 * (weights + self.memo_strength).unsqueeze(2) * self.container_value).sum(dim=1)
 
-        # Residual
+        # Modify current state using memory
         x += memory.unsqueeze(1)
 
         # Pose estimator
         out = self.f_mix(x)
 
         # Update containers
+        self._update_containers(key, value)
 
-
-
+        # Return step result
         return out
 
-    def update_container(self, key, value):
+    def _update_containers(self, key, value):
+        replace_index = torch.argmin(self.memo_strength)
+        self.container_key[:, replace_index] = key
+        self.container_value[:, replace_index] = value
 
-        
-
-    def update_memo_strength(self, value):
+    def _update_memo_strength(self, value):
         cos_sim = F.cosine_similarity(value.unsqueeze(1), self.container_value, dim=2)
-        amplitude = F.sigmoid(cos_sim) + torch.Tensor([0.5]).to(self.device)
+        amplitude = torch.sigmoid(cos_sim) + torch.Tensor([0.5]).to(self.device)
         self.memo_strength *= amplitude
 
 
@@ -378,16 +376,16 @@ def test_rnn_hist():
     COND_SPEECH_SIZE = 2 # speech dimension + motion dimension
     COND_MOTION_SIZE = 36
     MOTION_SIZE = 36
-    BATCH_SIZE = 5
+    BATCH_SIZE = 3
     PREV_SIZE = 4
     BTACH_SIZE = 5
 
     # ---------- Inputs
-    conds_speech_seq = torch.zeros(BTACH_SIZE, 608, COND_SPEECH_SIZE)
+    conds_speech_seq = torch.normal(BTACH_SIZE, 608, COND_SPEECH_SIZE)
     labels_seq = torch.ones(BTACH_SIZE, 608)
-    conds_speech_chunk = torch.zeros(BTACH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE)
-    conds_motion_chunk = torch.zeros(BTACH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE)
-    lengths_chunk = torch.Tensor([20, 20, 10, 5, 3])
+    conds_speech_chunk = torch.normal(BTACH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE)
+    conds_motion_chunk = torch.normal(BTACH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE)
+    lengths_chunk = torch.Tensor([20, 10, 5])
 
     lengths_seq = 2 * PREV_SIZE + (CHUNK_SIZE - PREV_SIZE) * lengths_chunk
     masks_seq = torch.zeros(*conds_speech_seq.size()[:-1])
@@ -444,14 +442,15 @@ if __name__ == '__main__':
 
     # test_rnn_hist()
 
+    torch.manual_seed(1)
+
     ###
     CHUNK_SIZE = 34
     COND_SPEECH_SIZE = 2 # speech dimension + motion dimension
     COND_MOTION_SIZE = 36
     MOTION_SIZE = 36
-    BATCH_SIZE = 5
+    BATCH_SIZE = 1
     PREV_SIZE = 4
-    BTACH_SIZE = 5
 
     mixer_param = dict(
         hidden_size = 256,
@@ -463,11 +462,12 @@ if __name__ == '__main__':
     )
 
     # ---------- Inputs
-    conds_speech_seq = torch.zeros(BTACH_SIZE, 608, COND_SPEECH_SIZE)
-    labels_seq = torch.ones(BTACH_SIZE, 608)
-    conds_speech_chunk = torch.zeros(BTACH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE)
-    conds_motion_chunk = torch.zeros(BTACH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE)
-    lengths_chunk = torch.Tensor([20, 20, 10, 5, 3])
+    conds_speech_seq = torch.zeros(BATCH_SIZE, 608, COND_SPEECH_SIZE).normal_()
+    labels_seq = torch.ones(BATCH_SIZE, 608)
+    conds_speech_chunk = torch.zeros(BATCH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE).normal_()
+    conds_motion_chunk = torch.zeros(BATCH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE).normal_()
+    # lengths_chunk = torch.Tensor([20, 10, 5])
+    lengths_chunk = torch.Tensor([20])
 
     lengths_seq = 2 * PREV_SIZE + (CHUNK_SIZE - PREV_SIZE) * lengths_chunk
     masks_seq = torch.zeros(*conds_speech_seq.size()[:-1])
@@ -476,6 +476,6 @@ if __name__ == '__main__':
     # --------------------------------------
 
 
-    net = AttentionHistNet(input_0_size=COND_SPEECH_SIZE, input_1_size=COND_MOTION_SIZE, hidden_size=128, output_size=MOTION_SIZE, mixer_param=mixer_param)
+    net = AttentionHistNet(input_0_size=COND_SPEECH_SIZE, input_1_size=COND_MOTION_SIZE, hidden_size=2, output_size=MOTION_SIZE, mixer_param=mixer_param)
 
     net(conds_speech_chunk, conds_motion_chunk)
