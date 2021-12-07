@@ -1,481 +1,329 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import math
+from typing import Tuple
+from torch import Tensor
 
 
-def get_linear_block(input_size, output_size):
-    return nn.Sequential(
-        nn.Linear(input_size, output_size//2),
-        nn.LeakyReLU(0.2, True),
-        nn.Linear(output_size//2, output_size))
+def get_activation(name):
+    if name == 'relu':
+        return nn.ReLU()
 
-def get_conv_block(in_channels, out_channels, downsample=False, padding=0, batchnorm=False):
-        if downsample:
-            kernel_size = 4
-            stride = 2
-        else:
-            kernel_size = 3
-            stride = 1
-            
-        if batchnorm:
-            net = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(0.2, True)
-            )
+def get_memory_cell(name):
+    if name == 'lstm':
+        return MemoryModuleLSTM
 
-        else:
-            net = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
-                nn.LeakyReLU(0.2, True)
-            )
-        return net
+def get_pose_generator(name):
+    if name == 'gru':
+        return PoseGeneratorGRU
+
+def get_chunk_connector(name):
+    if name == 'interpolation':
+        return ChunkConnectorInterpolation
 
 
-class Mixer(nn.Module):
+class AddNorm(nn.Module):
+    def __init__(self, d_model: int, chunk_len: int, dropout: float = 0.1):
+        super(AddNorm, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.layernorm = nn.LayerNorm([chunk_len, d_model])
 
-    def __init__(self, cond_size, output_size, param):
-        super().__init__()
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+            y: Tensor, shape [batch_size, seq_len, d_model]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+        """
+        return self.layernorm(self.dropout(x + y))
 
-        self.cond_size = cond_size
-        self.output_size = output_size
-        self.hidden_size = param['hidden_size']
-        self.noise_size = param['noise_size']
-        self.num_layers = param['num_layers']
-        self.device = param['device']
-        self.dropout = param['dropout']
-        self.bidirectional = param['bidirectional']
 
-        # Modules
-        self.mp = get_linear_block(self.cond_size, self.hidden_size)
-        self.ne = get_linear_block(self.noise_size, self.hidden_size)
-        self.mix = nn.GRU(2*self.hidden_size, 2*self.hidden_size, num_layers=self.num_layers, bidirectional=self.bidirectional, dropout=self.dropout, batch_first=True)
-        self.proj = get_linear_block(2*self.hidden_size, output_size)
-        self.drop = nn.Dropout(p=self.dropout, inplace=True)
-    
-    def forward(self, cond):
+class SequenceWiseFFN(nn.Module):
+    def __init__(self, d_in: int, d_out: int, chunk_len: int, activation: str = 'relu', dropout: float = 0.1):
+        super(SequenceWiseFFN, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.f_0 = nn.Linear(in_features=d_in, out_features=d_out)
+        self.f_1 = nn.Linear(in_features=chunk_len, out_features=chunk_len)
+        if d_in == d_out:
+            self.addnorm =True
+            self.module_addnorm = AddNorm(d_model=d_out, chunk_len=chunk_len, dropout=dropout)
+        self.activation = get_activation(name=activation)
 
-        if len(cond.size()) == 4:
-            B, N, T, _ = cond.size()
-            B_new = B * N
-        else:
-            B, T, _ = cond.size()
-            B_new = B
-
-        x_mp = self.mp(cond.view(B_new, T, -1))
-        x_mp = F.layer_norm(x_mp, x_mp.size()[1:])
-        x_mp = self.drop(x_mp)
-
-        x_ne = self.ne(self.get_noise(B_new, T))
-        x_ne = F.layer_norm(x_ne, x_ne.size()[1:])
-        x_ne = self.drop(x_ne)
-
-        x = torch.cat([x_mp, x_ne], dim=2)
-
-        x, _ = self.mix(x)
-        x = F.layer_norm(x, x.size()[1:])
-        x = x[:, :, :x.size(2)//2] + x[:, :, x.size(2)//2:]  # sum bidirectional outputs
-        x = self.drop(x)
-
-        x = self.proj(x)
-
-        if len(cond.size()) == 4:
-            x = x.view(B, N, T, -1)
+    def forward(self, input: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, d_in]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_out]
+        """
+        x = self.activation(self.f_0(self.dropout(input)))
+        x = self.f_1(self.dropout(x.transpose(1, 2))).transpose(1, 2)
+        if self.addnorm:
+            x = self.module_addnorm(x, input)
         return x
 
-    
-    def get_noise(self, batch_size, time_step):
-        return torch.normal(mean=0, std=1, size=(batch_size, 1, self.noise_size), device=self.device).repeat(1, time_step, 1)
 
-    def count_parameters(self):
-        return sum([p.numel() for p in self.parameters() if p.requires_grad])
+class PositionalEncoding(nn.Module):
 
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000, batch_first=False):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+        self.batch_first = batch_first
 
-class RNNHistNet(nn.Module):
-    
-    def __init__(self, cond_size, output_size, hidden_size, chunk_size, prev_size, smoothing, mixer_param, num_layers=1, dropout=0, device='cpu'):
-
-        super().__init__()
-
-        self.cond_size = cond_size
-        self.output_size = output_size
-        self.hidden_size = hidden_size
-        self.chunk_size = chunk_size
-        self.prev_size = prev_size
-        self.smoothing = smoothing
-        self.num_layers = num_layers
-        self.device = device
-
-        self.mixer = Mixer(cond_size=hidden_size, output_size=output_size, param=mixer_param)
-        self.ce = get_linear_block(cond_size, hidden_size//2)
-        self.me = get_linear_block(output_size, hidden_size//2)
-        self.memo = nn.GRU(chunk_size*hidden_size, chunk_size*hidden_size, num_layers=num_layers, dropout=dropout, batch_first=True)
-
-
-    def forward(self, cond_speech, cond_motion, num_chunks, hs=None):
-        '''
+    def forward(self, input: Tensor, start_position: int = 0) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [seq_len, batch_size, d_model],
+                or shape [batch_size, seq_len, d_model] if batch_first is True
+            start_position: delay on time step for input
         Returns:
-            x - Model output, shape (B, N, T, d)
-            x_seq - Interpolated x, shape (B, T, d)
-            hs - Hidden state of memo
-        '''
+            x: Tensor, shape [seq_len, batch_size, d_model],
+                or shape [batch_size, seq_len, d_model] if batch_first is True
+        """
+        if self.batch_first:
+            x = input.transpose(0, 1)
+        x += self.pe[start_position:x.size(0) + start_position]
+        if self.batch_first:
+            x = x.transpose(0, 1)
+        return x
 
-        B, N, T, _ = cond_speech.size()
 
-        x_ce = self.ce(cond_speech)
-        x_me = self.me(cond_motion)
+class Aligner(nn.Module):
 
-        x = torch.cat([x_ce, x_me], dim=3)
-        x = x.view(B, N, -1)
+    def __init__(self, d_cond: int, d_motion: int, d_model: int, chunk_len: int, prev_len: int, params: dict, activation: str = 'relu', dropout: float = 0.1):
+        super(Aligner, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.f_cond = nn.Linear(in_features=d_cond, out_features=d_model//2)
+        self.f_motion = nn.Linear(in_features=d_motion, out_features=d_model//2)
+        if params['pe']:
+            self.module_pe = PositionalEncoding(d_model=d_model//2, dropout=dropout, batch_first=True)
+        self.f_fc = nn.Linear(d_model, d_model)
+        self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
+        self.activation = get_activation(name=activation)
 
-        if hs is None:
-            hs = torch.zeros(1*self.num_layers, B, x.size(2))
+        self.chunk_len = chunk_len
+        self.prev_len = prev_len
+        self.pe = params['pe']
+    
+    def forward(self, input_cond: Tensor, input_prev_motion: Tensor) -> Tensor:
+        """
+        Args:
+            input_cond: Tensor, shape [batch_size, seq_len, d_cond]
+            input_prev_motion: Tensor, shape [batch_size, seq_len, d_motion]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+        """
+        x_cond = self.activation(self.f_cond(self.dropout(input_cond)))
+        x_motion = self.activation(self.f_motion(self.dropout(input_prev_motion)))
+        if self.pe:
+            # Positional encoding with different position
+            x_cond = self.module_pe(x_cond, start_position=self.chunk_len-self.prev_len)
+            x_motion = self.module_pe(x_motion, start_position=0)
+        x = torch.cat([x_cond, x_motion], dim=2)
+        x = self.module_addnorm(self.f_fc(self.dropout(x)), x)
+        return x
 
-        x_packed = pack_padded_sequence(x, num_chunks, batch_first=True)
 
-        x, hs = self.memo(x_packed, hs)
-        x, _ = pad_packed_sequence(x_packed, batch_first=True)
+class MemoryModuleLSTM(nn.Module):
 
-        x = x.contiguous().view(B, N, T, -1)
-        x = self.mixer(cond=x)
+    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len: int, params: dict, activation: str = 'relu', dropout: float = 0.1):
+        super(MemoryModuleLSTM, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.module_swff = SequenceWiseFFN(d_in=d_in, d_out=d_model, chunk_len=chunk_len, activation=activation, dropout=dropout)
+        self.f_lstm = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=params['num_layers'], bidirectional=False, dropout=dropout, batch_first=True)
+        self.f_out = nn.Linear(in_features=d_model, out_features=d_out)
+        self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
+        self.activation = get_activation(name=activation)
+        self.d_model = d_model
+        self.num_layers = params['num_layers']
+    
+    def activate_memory(self, batch_size: int):
+        self.memory = (torch.zeros(self.num_layers, batch_size, self.d_model), torch.zeros(self.num_layers, batch_size, self.d_model))
 
-        if self.smoothing == 'interpolation':
-            x_itp = self.interpolate(x)
+    def asign_memory(self, memory: Tuple[Tensor, Tensor]):
+        self.memory = memory
 
-        return x, x_itp, hs
+    def get_memory(self):
+        return self.memory
 
-    def interpolate(self, x):
-        ''' Interpolate between chunks.
-            x (B, N_chunk, T, *)
-        '''
-        output = x[:, 0][:self.chunk_size-self.prev_size]
-        n_chunk = x.size(1)
+    def check_memory_type(self, memory):
+        assert type(memory) is Tuple, f"Must be (Tensor[num_layers, batch_size, d_model], Tensor[num_layers, batch_size, d_model]). Check memory type!"
+        for i, m in enumerate(memory):
+            assert len(m.shape) == 3, f"Element must be Tensor[num_layers, batch_size, d_model], Got {m.shape} at position {i}. Check memory type!"
+
+    def forward(self, input: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, d_in]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_out]
+        """
+        x = self.activation(self.module_swff(self.dropout(input)))
+        x, self.memory = self.f_lstm(self.dropout(x), self.memory)
+        x = self.f_out(self.dropout(x))
+        x = self.module_addnorm(x, input)
+        return x
+
+
+class PoseGeneratorGRU(nn.Module):
+
+    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len, params: dict, activation: str = 'relu', dropout: float = 0.1):
+        super(PoseGeneratorGRU, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.f_swff = SequenceWiseFFN(d_in=d_in, d_out=d_model, chunk_len=chunk_len, activation=activation, dropout=dropout)
+        self.f_gru = nn.GRU(d_model, d_model, num_layers=params['num_layers'], bidirectional=params['bidirectional'], dropout=dropout, batch_first=True)
+        self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
+        self.f_out = nn.Linear(d_model, d_out)
+        self.activation = get_activation(name=activation)
+
+    def forward(self, input: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, d_in]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_out]
+        """
+        x = self.activation(self.f_swff(self.dropout(input)))
+        x, _ = self.f_gru(self.dropout(x))
+        x = x[:, :, :x.shape[-1]//2] + x[:, :, x.shape[-1]//2:]  # sum bidirectional outputs
+        x = self.module_addnorm(x, input)
+        x = self.f_out(self.dropout(x))
+        return x
+
+
+class ChunkConnectorInterpolation:
+
+    def __init__(self, chunk_len: int, prev_len: int):
+        self.chunk_len = chunk_len
+        self.prev_len = prev_len
+
+    def __call__(self, input: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, chunk_len, ?]
+        Returns:
+            output: Tensor, shape [batch_size, time_len, ?]
+        """
+        output = input[:, 0][:self.chunk_len-self.prev_len]
+        n_chunk = input.shape[1]
         for i in range(1, n_chunk):
-            trans_prev = x[:, i-1][:, -self.prev_size:]
-            trans_next = x[:, i][:, :self.prev_size]
+            trans_prev = input[:, i-1][:, -self.prev_len:]
+            trans_next = input[:, i][:, :self.prev_len]
             # Transition strategy
             trans_motion = []
-            for k in range(self.prev_size):
-                trans = ((self.prev_size - k) / (self.prev_size + 1)) * trans_prev[:, k] + ((k + 1) / (self.prev_size + 1)) * trans_next[:, k]
+            for k in range(self.prev_len):
+                trans = ((self.prev_len - k) / (self.prev_len + 1)) * trans_prev[:, k] + ((k + 1) / (self.prev_len + 1)) * trans_next[:, k]
                 trans_motion.append(trans.unsqueeze(1))
             trans_motion = torch.cat(trans_motion, dim=1)
             # Append each
             if i != n_chunk - 1: # not last chunk
-                output = torch.cat([output, trans_motion, x[:, i][:, self.prev_size:self.chunk_size-self.prev_size]], dim=1)
+                output = torch.cat([output, trans_motion, input[:, i][:, self.prev_len:self.chunk_len-self.prev_len]], dim=1)
             else: # last chunk
-                output = torch.cat([output, trans_motion, x[:, i][:, self.prev_size:self.chunk_size]], dim=1)
+                output = torch.cat([output, trans_motion, input[:, i][:, self.prev_len:self.chunk_len]], dim=1)
         return output
 
-    def count_parameters(self):
-        return sum([p.numel() for p in self.parameters() if p.requires_grad])
 
+class HistNet(nn.Module):
 
-class QueryKeyValue(nn.Module):
+    def __init__(self, 
+                d_cond: int, 
+                d_motion: int, 
+                d_model: int, 
+                chunk_len: int, 
+                prev_len: int, 
+                aligner_params: dict,
+                memory_params: dict,
+                pose_generator_parmas: dict,
+                chunk_connector_params: dict,
+                activation: str = 'relu', 
+                dropout: float = 0.1):
+        super(HistNet, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-    def __init__(self, input_0_size, input_1_size, output_size, num_layers=1, bidirectional=True, dropout=0):
-        super().__init__()
+        self.module_align = Aligner(d_cond=d_cond, d_motion=d_motion, d_model=d_model, chunk_len=chunk_len, prev_len=prev_len, params=aligner_params, activation=activation, dropout=dropout)
+        self.module_memory = get_memory_cell(memory_params['name'])(d_in=d_model, d_out=d_model, d_model=d_model, chunk_len=chunk_len, params=memory_params, activation='relu', dropout=0.1, )
+        self.module_pose_generator = get_pose_generator(pose_generator_parmas['name'])(d_in=d_model, d_out=d_motion, d_model=d_model, chunk_len=chunk_len, params=pose_generator_parmas, activation=activation, dropout=dropout)
+        self.module_chunk_connector = get_chunk_connector(chunk_connector_params['name'])(chunk_len=chunk_len, prev_len=prev_len)
 
-        self.gru_0 = nn.GRU(input_0_size, output_size//2, bidirectional=bidirectional, num_layers=num_layers, dropout=dropout, batch_first=True)
-        self.gru_1 = nn.GRU(input_1_size, output_size//2, bidirectional=bidirectional, num_layers=num_layers, dropout=dropout, batch_first=True)
-        self.wq = nn.Parameter(data=torch.Tensor(output_size, output_size), requires_grad=True)
-        self.wk = nn.Parameter(data=torch.Tensor(output_size, output_size), requires_grad=True)
-        self.wv = nn.Parameter(data=torch.Tensor(output_size, output_size), requires_grad=True)
-        self._init_weights()
+    def init_memory(self, batch_size: int, memory = None):
+        if memory is None:
+            self.module_memory.activate_memory(batch_size)
+        else:
+            self.module_memory.check_memory_type(memory)
+            self.module_memory.asign_memory(memory)
 
-    def _init_weights(self):
-        stdv = 1. / math.sqrt(self.wq.size(1))
-        self.wq.data.uniform_(-stdv, stdv)
-        stdv = 1. / math.sqrt(self.wk.size(1))
-        self.wk.data.uniform_(-stdv, stdv)
-        stdv = 1. / math.sqrt(self.wv.size(1))
-        self.wv.data.uniform_(-stdv, stdv)
+    def forward(self, cond_chunks: Tensor, prev_motion_chunks: Tensor, memory = None) -> Tuple[Tensor, Tensor, Tensor]:
+        """
+        Args:
+            cond_chunks: Tensor, shape [batch_size, seq_len, chunk_len, d_cond]
+            prev_motion_chunks: Tensor, shape [batch_size, seq_len, chunk_len, d_motion]
+        """
+        self.init_memory(cond_chunks.shape[0], memory)
 
-    def forward(self, input_0, input_1):
-        x_0, _ = self.gru_0(input_0)
-        x_0 = x_0[:, :, :x_0.size(2)//2] + x_0[:, :, x_0.size(2)//2:] # sum bi-directional
-        x_0 = x_0.mean(dim=1)
+        x_chunks = list()
+        for step in range(cond_chunks.shape[1]):
 
-        x_1, _ = self.gru_1(input_1)
-        x_1 = x_1[:, :, :x_1.size(2)//2] + x_1[:, :, x_1.size(2)//2:] # sum bi-directional
-        x_1 = x_1.mean(dim=1)
+            cond = cond_chunks[:, step]
+            prev_motion = prev_motion_chunks[:, step]
 
-        x = torch.cat([x_0, x_1], dim=-1)
+            x = self.module_align(cond, prev_motion)
+            x = self.module_memory(x)
+            x = self.module_pose_generator(x)
+
+            x_chunks.append(x.unsqueeze(1))
+
+        x_chunks = torch.cat(x_chunks, dim=1)
+        x_seq = self.module_chunk_connector(x_chunks)
         
-        query = x @ self.wq
-        key = x @ self.wk
-        value = x @ self.wv
-        return query, key, value
+        return x_chunks, x_seq, self.module_memory.get_memory()
 
-
-class AttentionHistNet(nn.Module):
-
-    def __init__(self, input_0_size, input_1_size, hidden_size, output_size, mixer_param, container_size=10, num_layers=1, bidirectional=True, dropout=0, device='cpu'):
-        super().__init__()
-
-        self.container_size = container_size
-        self.hidden_size = hidden_size
-        self.device = device
-
-        self.f_input_0 = nn.Linear(input_0_size, hidden_size//2)
-        self.f_input_1 = nn.GRU(input_1_size, hidden_size//2, bidirectional=bidirectional, num_layers=num_layers, dropout=dropout, batch_first=True)
-
-        self.f_qkv = QueryKeyValue(input_0_size, input_1_size, hidden_size)
-        self.f_mix = Mixer(hidden_size, output_size, mixer_param)
-
-
-    def forward(self, input_0_chunk, input_1_chunk):
-
-        B, N, T, _ = input_0_chunk.size()
-
-        self.container_key = torch.zeros(B, self.container_size, self.hidden_size).to(self.device)
-        self.container_value = torch.zeros(B, self.container_size, self.hidden_size).to(self.device)
-        self.memo_strength = torch.ones(B, self.container_size).to(self.device)
-
-        for step in range(N):
-
-            input_0 = input_0_chunk[:, step]
-            input_1 = input_1_chunk[:, step]
-
-            output = self.step(input_0, input_1)
-
-            if step == 10:
-                print(self.memo_strength)
-                assert 0
-
-
-    def step(self, input_0, input_1):
-        # Current step information
-        x_0 = self.f_input_0(input_0)
-        x_1, _ = self.f_input_1(input_1)
-        x_1 = x_1[:, :, :x_1.size(2)//2] + x_1[:, :, x_1.size(2)//2:] # sum bi-directional
-        x_1 = x_1.mean(dim=1) # mean over time dim
-        x = torch.cat([x_0, x_1.unsqueeze(1).repeat(1, x_0.size(1), 1)], dim=-1)
-
-        # Attention information
-        query, key, value = self.f_qkv(input_0, input_1)
-
-        # Compute weights
-        weights = torch.bmm(query.unsqueeze(1), self.container_key.transpose(1, 2))
-        weights = F.softmax(weights / torch.sqrt(torch.Tensor([self.hidden_size]).to(self.device)), dim=2).squeeze(1)
-
-        # Update memo
-        self._update_memo_strength(value)
-
-        # Weighted sum attention and memo strength
-        memory = (.5 * (weights + self.memo_strength).unsqueeze(2) * self.container_value).sum(dim=1)
-
-        # Modify current state using memory
-        x += memory.unsqueeze(1)
-
-        # Pose estimator
-        out = self.f_mix(x)
-
-        # Update containers
-        self._update_containers(key, value)
-
-        # Return step result
-        return out
-
-    def _update_containers(self, key, value):
-        replace_index = torch.argmin(self.memo_strength)
-        self.container_key[:, replace_index] = key
-        self.container_value[:, replace_index] = value
-
-    def _update_memo_strength(self, value):
-        cos_sim = F.cosine_similarity(value.unsqueeze(1), self.container_value, dim=2)
-        amplitude = torch.sigmoid(cos_sim) + torch.Tensor([0.5]).to(self.device)
-        self.memo_strength *= amplitude
-
-
-
-
-class SeqDiscriminator(nn.Module):
-
-    def __init__(self, input_size, cond_size, hidden_size, num_layers=1, bidirectional=True, dropout=0):
-        super().__init__()
-
-        self.ce = get_linear_block(cond_size, hidden_size//2)
-        self.me = get_linear_block(input_size, hidden_size//2)
-        self.gru = nn.GRU(hidden_size, hidden_size, num_layers=num_layers, bidirectional=bidirectional, dropout=dropout, batch_first=True)
-        self.out = nn.Linear(hidden_size, 1)
-
-    def forward(self, input, cond):
-
-        x_cond = self.ce(cond)
-        x_input = self.me(input)
-
-        x = torch.cat([x_cond, x_input], dim=-1)
-
-        x, _ = self.gru(x)
-        x = x[:, :, :x.size(2)//2] + x[:, :, x.size(2)//2:]  # sum bidirectional outputs
-        x = self.out(x)
-        return torch.sigmoid(x).squeeze(-1)
-
-    def count_parameters(self):
-        return sum([p.numel() for p in self.parameters() if p.requires_grad])
-
-
-class ChunkDiscriminator(nn.Module):
-
-    def __init__(self, input_size, cond_size, hidden_size):
-        super().__init__()
-
-        self.cond_size = cond_size
-        self.input_size = input_size
-
-        self.ae = get_linear_block(cond_size, hidden_size)
-        self.me = get_linear_block(input_size, hidden_size)
-        self.pe = get_linear_block(input_size, hidden_size)
-
-        self.conv_layers = nn.Sequential(
-            get_conv_block(3*hidden_size, 3*hidden_size, downsample=False, batchnorm=False),
-            nn.LayerNorm((192, 32)),
-            get_conv_block(3*hidden_size, 3*2 * hidden_size, downsample=True, batchnorm=False),
-            nn.LayerNorm((384, 15)),
-            get_conv_block(3*2 * hidden_size, 3*2 * hidden_size, downsample=False, batchnorm=False),
-            nn.LayerNorm((384, 13)),
-            get_conv_block(3*2 * hidden_size, 3*4 * hidden_size, downsample=True, batchnorm=False),
-            nn.LayerNorm((768, 5)),
-            get_conv_block(3*4 * hidden_size, 3*4 * hidden_size, downsample=False, batchnorm=False),
-            nn.LayerNorm((768, 3)),
-            nn.Conv1d(3*4 * hidden_size, 3*8 * hidden_size, 3)
-        ) # for 34 frames
-
-        self.out_net = nn.Sequential(
-            nn.Linear(1536, 256), 
-            nn.LayerNorm(256),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(256, 64),
-            nn.LayerNorm(64),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(64, 1),
-        )
-
-    def forward(self, input, cond_speech, cond_motion):
-        x_ae = self.ae(cond_speech)
-        x_pe = self.pe(cond_motion)
-        x = self.me(input)
-        x = torch.cat([x_ae, x_pe, x], dim=-1) # (N, T, hidden_size)
-
-        x = x.transpose(1, 2)
-        x = self.conv_layers(x)
-        x = x.transpose(1, 2)
-        x = x.view(x.size(0), -1)
-
-        return self.out_net(x).mean()
-
-    def count_parameters(self):
-        return sum([p.numel() for p in self.parameters() if p.requires_grad])
-
-
-def test_rnn_hist():
-
-    CHUNK_SIZE = 34
-    COND_SPEECH_SIZE = 2 # speech dimension + motion dimension
-    COND_MOTION_SIZE = 36
-    MOTION_SIZE = 36
-    BATCH_SIZE = 3
-    PREV_SIZE = 4
-    BTACH_SIZE = 5
-
-    # ---------- Inputs
-    conds_speech_seq = torch.normal(BTACH_SIZE, 608, COND_SPEECH_SIZE)
-    labels_seq = torch.ones(BTACH_SIZE, 608)
-    conds_speech_chunk = torch.normal(BTACH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE)
-    conds_motion_chunk = torch.normal(BTACH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE)
-    lengths_chunk = torch.Tensor([20, 10, 5])
-
-    lengths_seq = 2 * PREV_SIZE + (CHUNK_SIZE - PREV_SIZE) * lengths_chunk
-    masks_seq = torch.zeros(*conds_speech_seq.size()[:-1])
-    for i, l in enumerate(lengths_seq):
-        masks_seq[i, :int(l)] = 1 / int(l)
-    # ---------
-
-    mixer_param = dict(
-        hidden_size = 256,
-        noise_size = 20,
-        num_layers = 2,
-        bidirectional = True,
-        dropout = 0,
-        device = 'cpu'
-    )
-
-    rnn_hist_net = RNNHistNet(cond_size=2, output_size=36, hidden_size=64, chunk_size=34, prev_size=4, smoothing='interpolation', mixer_param=mixer_param)
-    seq_disc = SeqDiscriminator(input_size=36, cond_size=2, num_layers=2, hidden_size=512)
-    chunk_disc = ChunkDiscriminator(input_size=36, cond_size=2, hidden_size=64)
-
-    outputs_chunk, outputs_itped, hss = rnn_hist_net(conds_speech_chunk, conds_motion_chunk, lengths_chunk, hs=None)
-
-    print("HistNet params count: ", rnn_hist_net.count_parameters())
-    print("ChunkDisc params count: ", chunk_disc.count_parameters())
-    print("SeqDisc params count: ", seq_disc.count_parameters())
-
-    def remove_padding(x, lengths):
-        return torch.cat([x[i, :int(l)] for i, l in enumerate(lengths)], dim=0)
-
-    # Chunk loss: adv
-    # Remove padded chunks
-    outputs_chunk = remove_padding(outputs_chunk, lengths_chunk)
-    cond_speech = remove_padding(conds_speech_chunk, lengths_chunk)
-    cond_motion = remove_padding(conds_motion_chunk, lengths_chunk)
-    loss_chunk = chunk_disc(outputs_chunk, cond_speech, cond_motion)
-    print("chunk loss: adv ", loss_chunk.item())
-
-    # Continuity loss: l1
-    loss_cl = F.smooth_l1_loss(outputs_chunk[:, :PREV_SIZE], cond_motion[:, -PREV_SIZE:], reduction='none')
-    loss_cl = loss_cl.sum(dim=[1, 2]) # sum over joint & time step
-    loss_cl = loss_cl.mean() # mean over batch samples
-    print(loss_cl.item())
-
-    # Seq loss: adv
-    y_pred = seq_disc(outputs_itped, conds_speech_seq)
-    loss_seq = F.binary_cross_entropy(y_pred, labels_seq, reduction='none')
-    # Only compute loss for no padded parts by multiplying mask
-    loss_seq = torch.trace(loss_seq @ masks_seq.T) / masks_seq.size(0)
-    print(loss_seq.item())
-
-    
 
 if __name__ == '__main__':
 
-    # test_rnn_hist()
+    MAX_TIME_STEP = 50
+    CHUNK_LEN = 34
+    PREV_LEN = 4
+    D_COND = 2
+    D_MOTION = 36
+    D_MODEL = 128
+    ACTIVATION = 'relu'
+    DROPOUT = 0.1
+    BATCH_SIZE = 5
 
-    torch.manual_seed(1)
-
-    ###
-    CHUNK_SIZE = 34
-    COND_SPEECH_SIZE = 2 # speech dimension + motion dimension
-    COND_MOTION_SIZE = 36
-    MOTION_SIZE = 36
-    BATCH_SIZE = 1
-    PREV_SIZE = 4
-
-    mixer_param = dict(
-        hidden_size = 256,
-        noise_size = 20,
-        num_layers = 2,
-        bidirectional = True,
-        dropout = 0,
-        device = 'cpu'
+    MEMORY_PARAMS = dict(
+        name = 'lstm',
+        num_layers = 2
     )
 
-    # ---------- Inputs
-    conds_speech_seq = torch.zeros(BATCH_SIZE, 608, COND_SPEECH_SIZE).normal_()
-    labels_seq = torch.ones(BATCH_SIZE, 608)
-    conds_speech_chunk = torch.zeros(BATCH_SIZE, 20, CHUNK_SIZE, COND_SPEECH_SIZE).normal_()
-    conds_motion_chunk = torch.zeros(BATCH_SIZE, 20, CHUNK_SIZE, COND_MOTION_SIZE).normal_()
-    # lengths_chunk = torch.Tensor([20, 10, 5])
-    lengths_chunk = torch.Tensor([20])
+    ALIGHNER_PARMAS = dict(
+        pe = True
+    )
 
-    lengths_seq = 2 * PREV_SIZE + (CHUNK_SIZE - PREV_SIZE) * lengths_chunk
-    masks_seq = torch.zeros(*conds_speech_seq.size()[:-1])
-    for i, l in enumerate(lengths_seq):
-        masks_seq[i, :int(l)] = 1 / int(l)
-    # --------------------------------------
+    POSE_GENERATOR_PARAMS = dict(
+        name = 'gru',
+        num_layers = 2,
+        bidirectional = True
+    )
 
+    CHUNK_CONNECTOR_PARAMS = dict(
+        name = 'interpolation'
+    )
 
-    net = AttentionHistNet(input_0_size=COND_SPEECH_SIZE, input_1_size=COND_MOTION_SIZE, hidden_size=2, output_size=MOTION_SIZE, mixer_param=mixer_param)
+    cond_chunks = torch.zeros(BATCH_SIZE, MAX_TIME_STEP, CHUNK_LEN, D_COND)
+    prev_motion_chunks = torch.zeros(BATCH_SIZE, MAX_TIME_STEP, CHUNK_LEN, D_MOTION)
 
-    net(conds_speech_chunk, conds_motion_chunk)
+    hist_net = HistNet(
+        d_cond=D_COND, d_motion=D_MOTION, d_model=D_MODEL, 
+        chunk_len=CHUNK_LEN, prev_len=PREV_LEN, aligner_params=ALIGHNER_PARMAS, 
+        memory_params=MEMORY_PARAMS, pose_generator_parmas=POSE_GENERATOR_PARAMS, chunk_connector_params=CHUNK_CONNECTOR_PARAMS,
+        activation=ACTIVATION, dropout=DROPOUT)
+
+    hist_net(cond_chunks, prev_motion_chunks)
