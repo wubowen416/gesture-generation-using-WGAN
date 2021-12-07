@@ -85,7 +85,7 @@ class JitGRULayer(jit.ScriptModule):
 class JitGRU(jit.ScriptModule):
     __constants__ = ['hidden_size', 'num_layers', 'batch_first']
 
-    def __init__(self, input_size, hidden_size, num_layers, batch_first=False, bias=True):
+    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=False, bias=True):
         super(JitGRU, self).__init__()
         # The following are not implemented.
         assert bias
@@ -125,6 +125,44 @@ class JitGRU(jit.ScriptModule):
             output = output.permute(1, 0, 2)
 
         return output, torch.stack(output_states)
+
+# ----------------------------------------------------------------------------------------------------------------------
+class JitBiGRU(nn.Module):
+
+    def __init__(self, d_in: int, d_model: int, num_layers: int = 1, dropout: float = 0.1, batch_first: bool = False, bias: bool = True):
+        super(JitBiGRU, self).__init__()
+
+        self.d_model = d_model
+        self.num_layers = num_layers
+        self.batch_first = batch_first
+
+        if num_layers == 1:
+            self.forward_layers = nn.ModuleList([JitGRU(d_in, d_model)])
+            self.backward_layers = nn.ModuleList([JitGRU(d_in, d_model)])
+        else:
+            self.forward_layers = nn.ModuleList([JitGRU(d_in, d_model)] + [JitGRU(d_model, d_model) for _ in range(num_layers - 1)])
+            self.backward_layers = nn.ModuleList([JitGRU(d_in, d_model)] + [JitGRU(d_model, d_model) for _ in range(num_layers - 1)])
+
+    def forward(self, x):
+        # TODO return states
+        # Handle batch_first cases
+        if self.batch_first:
+            x = x.permute(1, 0, 2)
+
+        forward_output = x
+        backward_output = x
+
+        for i in range(self.num_layers):
+            forward_output, _ = self.forward_layers[i](forward_output)
+            backward_output, _ = self.backward_layers[i](backward_output)
+
+        output = torch.cat([forward_output, backward_output], dim=-1)
+
+        # Don't forget to handle batch_first cases for the output too!
+        if self.batch_first:
+            output = output.permute(1, 0, 2)
+
+        return output
 
 # ----------------------------------------------------------------------------------------------------------------------
 def test_script_gru_layer(seq_len, batch, input_size, hidden_size):
@@ -201,6 +239,46 @@ def test_script_stacked_gru(seq_len, batch, input_size, hidden_size,
     assert (out_jit_hidden - out_pytorch_hidden).abs().max() < 1e-5
 
 # ----------------------------------------------------------------------------------------------------------------------
+def test_script_bi_gru(seq_len, batch, input_size, hidden_size,
+                            num_layers):
+    inp = torch.randn(seq_len, batch, input_size)
+    gru_hidden = torch.stack([torch.randn(batch, hidden_size) for _ in range(num_layers)])
+
+    # The JIT GRU instance
+    gru_jit = JitBiGRU(input_size, hidden_size, num_layers)
+    # Control: PyTorch's native GRU
+    gru_pytorch = nn.GRU(input_size, hidden_size, num_layers, bidirectional=True)
+
+    # # The name of each JitGRU parameter that we've defined in JitGRUCell
+    # param_names = ["weight_hh", "weight_ih", "bias_ih", "bias_hh"]
+
+    # for layer in range(num_layers):
+    #     for param_name in param_names:
+    #         # Build the name of the parameters in this layer
+    #         jit_name = F"layers.{layer}.cell.{param_name}"
+    #         pytorch_name = F"{param_name}_l{layer}"
+
+    #         jit_param = gru_jit.state_dict()[jit_name]
+    #         gru_param = gru_pytorch.state_dict()[pytorch_name]
+
+    #         # Make sure the shapes are the same
+    #         assert gru_param.shape == jit_param.shape
+
+    #         # Copy the weight values
+    #         with torch.no_grad():
+    #             gru_param.copy_(jit_param)
+
+    # Run both on the same input
+    out_jit = gru_jit(inp)
+    out_pytorch, _ = gru_pytorch(inp)
+
+    print(out_jit, out_pytorch)
+
+    # Make sure the values are reasonably close
+    assert (out_jit - out_pytorch).abs().max() < 1e-5
+    # assert (out_jit_hidden - out_pytorch_hidden).abs().max() < 1e-5
+
+# ----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     print('Testing layers...')
     test_script_gru_layer(5, 2, 3, 7)
@@ -208,4 +286,7 @@ if __name__ == '__main__':
     print('Testing stacked GRUs...')
     test_script_stacked_gru(5, 2, 3, 7, 10)
     test_script_stacked_gru(1, 1, 1, 1, 1)
+    print('Testing stacked bi-GRUs...')
+    test_script_bi_gru(1, 1, 1, 1, 1)
+    test_script_bi_gru(5, 2, 3, 7, 10)
     print('All unit tests passed!')

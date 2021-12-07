@@ -9,6 +9,8 @@ from torch import Tensor
 def get_activation(name):
     if name == 'relu':
         return nn.ReLU()
+    elif name == 'leaky':
+        return nn.LeakyReLU()
 
 def get_memory_cell(name):
     if name == 'lstm':
@@ -98,12 +100,12 @@ class PositionalEncoding(nn.Module):
 
 class Aligner(nn.Module):
 
-    def __init__(self, d_cond: int, d_motion: int, d_model: int, chunk_len: int, prev_len: int, params: dict, activation: str = 'relu', dropout: float = 0.1):
+    def __init__(self, d_cond: int, d_motion: int, d_model: int, chunk_len: int, prev_len: int, hparams: dict, activation: str = 'relu', dropout: float = 0.1):
         super(Aligner, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.f_cond = nn.Linear(in_features=d_cond, out_features=d_model//2)
         self.f_motion = nn.Linear(in_features=d_motion, out_features=d_model//2)
-        if params['pe']:
+        if hparams['pe']:
             self.module_pe = PositionalEncoding(d_model=d_model//2, dropout=dropout, batch_first=True)
         self.f_fc = nn.Linear(d_model, d_model)
         self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
@@ -111,7 +113,7 @@ class Aligner(nn.Module):
 
         self.chunk_len = chunk_len
         self.prev_len = prev_len
-        self.pe = params['pe']
+        self.pe = hparams['pe']
     
     def forward(self, input_cond: Tensor, input_prev_motion: Tensor) -> Tensor:
         """
@@ -134,16 +136,16 @@ class Aligner(nn.Module):
 
 class MemoryModuleLSTM(nn.Module):
 
-    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len: int, params: dict, activation: str = 'relu', dropout: float = 0.1):
+    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len: int, hparams: dict, activation: str = 'relu', dropout: float = 0.1):
         super(MemoryModuleLSTM, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.module_swff = SequenceWiseFFN(d_in=d_in, d_out=d_model, chunk_len=chunk_len, activation=activation, dropout=dropout)
-        self.f_lstm = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=params['num_layers'], bidirectional=False, dropout=dropout, batch_first=True)
+        self.f_lstm = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=hparams['num_layers'], bidirectional=False, dropout=dropout, batch_first=True)
         self.f_out = nn.Linear(in_features=d_model, out_features=d_out)
         self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
         self.activation = get_activation(name=activation)
         self.d_model = d_model
-        self.num_layers = params['num_layers']
+        self.num_layers = hparams['num_layers']
     
     def activate_memory(self, batch_size: int):
         self.memory = (torch.zeros(self.num_layers, batch_size, self.d_model), torch.zeros(self.num_layers, batch_size, self.d_model))
@@ -175,11 +177,11 @@ class MemoryModuleLSTM(nn.Module):
 
 class PoseGeneratorGRU(nn.Module):
 
-    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len, params: dict, activation: str = 'relu', dropout: float = 0.1):
+    def __init__(self, d_in: int, d_out: int, d_model: int, chunk_len, hparams: dict, activation: str = 'relu', dropout: float = 0.1):
         super(PoseGeneratorGRU, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.f_swff = SequenceWiseFFN(d_in=d_in, d_out=d_model, chunk_len=chunk_len, activation=activation, dropout=dropout)
-        self.f_gru = nn.GRU(d_model, d_model, num_layers=params['num_layers'], bidirectional=params['bidirectional'], dropout=dropout, batch_first=True)
+        self.f_gru = nn.GRU(d_model, d_model, num_layers=hparams['num_layers'], bidirectional=hparams['bidirectional'], dropout=dropout, batch_first=True)
         self.module_addnorm = AddNorm(d_model=d_model, chunk_len=chunk_len, dropout=dropout)
         self.f_out = nn.Linear(d_model, d_out)
         self.activation = get_activation(name=activation)
@@ -239,19 +241,21 @@ class HistNet(nn.Module):
                 d_model: int, 
                 chunk_len: int, 
                 prev_len: int, 
-                aligner_params: dict,
-                memory_params: dict,
-                pose_generator_parmas: dict,
-                chunk_connector_params: dict,
+                aligner_hparams: dict,
+                memory_hparams: dict,
+                pose_generator_hparmas: dict,
+                chunk_connector_hparams: dict,
                 activation: str = 'relu', 
                 dropout: float = 0.1):
         super(HistNet, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
-        self.module_align = Aligner(d_cond=d_cond, d_motion=d_motion, d_model=d_model, chunk_len=chunk_len, prev_len=prev_len, params=aligner_params, activation=activation, dropout=dropout)
-        self.module_memory = get_memory_cell(memory_params['name'])(d_in=d_model, d_out=d_model, d_model=d_model, chunk_len=chunk_len, params=memory_params, activation='relu', dropout=0.1, )
-        self.module_pose_generator = get_pose_generator(pose_generator_parmas['name'])(d_in=d_model, d_out=d_motion, d_model=d_model, chunk_len=chunk_len, params=pose_generator_parmas, activation=activation, dropout=dropout)
-        self.module_chunk_connector = get_chunk_connector(chunk_connector_params['name'])(chunk_len=chunk_len, prev_len=prev_len)
+        self.module_align = Aligner(d_cond=d_cond, d_motion=d_motion, d_model=d_model, chunk_len=chunk_len, prev_len=prev_len, hparams=aligner_hparams, activation=activation, dropout=dropout)
+        self.module_memory = get_memory_cell(memory_hparams['name'])(d_in=d_model, d_out=d_model, d_model=d_model, chunk_len=chunk_len, hparams=memory_hparams, activation='relu', dropout=0.1, )
+        self.module_pose_generator = get_pose_generator(pose_generator_hparmas['name'])(d_in=d_model, d_out=d_motion, d_model=d_model, chunk_len=chunk_len, hparams=pose_generator_hparmas, activation=activation, dropout=dropout)
+        self.module_chunk_connector = get_chunk_connector(chunk_connector_hparams['name'])(chunk_len=chunk_len, prev_len=prev_len)
+
+        self.count_parameters()
 
     def init_memory(self, batch_size: int, memory = None):
         if memory is None:
@@ -285,10 +289,13 @@ class HistNet(nn.Module):
         
         return x_chunks, x_seq, self.module_memory.get_memory()
 
+    def count_parameters(self):
+        print(f"{self._get_name()} params count: ", sum([p.numel() for p in self.parameters() if p.requires_grad]))
+
 
 if __name__ == '__main__':
 
-    MAX_TIME_STEP = 50
+    MAX_TIME_STEP = 40
     CHUNK_LEN = 34
     PREV_LEN = 4
     D_COND = 2
@@ -298,22 +305,22 @@ if __name__ == '__main__':
     DROPOUT = 0.1
     BATCH_SIZE = 5
 
-    MEMORY_PARAMS = dict(
+    MEMORY_HPARAMS = dict(
         name = 'lstm',
         num_layers = 2
     )
 
-    ALIGHNER_PARMAS = dict(
+    ALIGHNER_HPARMAS = dict(
         pe = True
     )
 
-    POSE_GENERATOR_PARAMS = dict(
+    POSE_GENERATOR_HPARAMS = dict(
         name = 'gru',
         num_layers = 2,
         bidirectional = True
     )
 
-    CHUNK_CONNECTOR_PARAMS = dict(
+    CHUNK_CONNECTOR_HPARAMS = dict(
         name = 'interpolation'
     )
 
@@ -321,9 +328,18 @@ if __name__ == '__main__':
     prev_motion_chunks = torch.zeros(BATCH_SIZE, MAX_TIME_STEP, CHUNK_LEN, D_MOTION)
 
     hist_net = HistNet(
-        d_cond=D_COND, d_motion=D_MOTION, d_model=D_MODEL, 
-        chunk_len=CHUNK_LEN, prev_len=PREV_LEN, aligner_params=ALIGHNER_PARMAS, 
-        memory_params=MEMORY_PARAMS, pose_generator_parmas=POSE_GENERATOR_PARAMS, chunk_connector_params=CHUNK_CONNECTOR_PARAMS,
-        activation=ACTIVATION, dropout=DROPOUT)
+        d_cond=D_COND, 
+        d_motion=D_MOTION, 
+        d_model=D_MODEL, 
+        chunk_len=CHUNK_LEN, 
+        prev_len=PREV_LEN, 
+        aligner_hparams=ALIGHNER_HPARMAS, 
+        memory_hparams=MEMORY_HPARAMS, 
+        pose_generator_hparmas=POSE_GENERATOR_HPARAMS, 
+        chunk_connector_hparams=CHUNK_CONNECTOR_HPARAMS,
+        activation=ACTIVATION, 
+        dropout=DROPOUT)
 
-    hist_net(cond_chunks, prev_motion_chunks)
+    output_chunks, output_seqs, _ = hist_net(cond_chunks, prev_motion_chunks, memory=None)
+
+    print(output_chunks.shape, output_seqs.shape)
