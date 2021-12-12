@@ -1,167 +1,359 @@
 import torch
 from torch import nn
-import math
-from torch.autograd import Variable
 from torch.nn import functional as F
+from torch import Tensor
+import math
+from typing import Tuple
+
+
+def get_activation(name):
+    if name == 'relu':
+        return nn.ReLU()
+    elif name == 'leaky':
+        return nn.LeakyReLU()
+    elif name == 'tanh':
+        return nn.Tanh()
+
 
 class Embedder(nn.Module):
-    def __init__(self, d_in: int, d_model: int):
-        super().__init__()
-        self.embed = nn.Linear(d_in, d_model)
-    def forward(self, x):
-        return self.embed(x)
+    def __init__(self, d_in: int, d_out: int, dropout: float = 0.1):
+        super(Embedder, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.embed = nn.Linear(d_in, d_out)
+    def forward(self, inputs: Tensor) -> Tensor:
+        return self.embed(inputs)
 
 
-class PositionalEncoder(nn.Module):
-    def __init__(self, d_model, max_seq_len = 80):
-        super().__init__()
-        self.d_model = d_model
-        
-        # create constant 'pe' matrix with values dependant on 
-        # pos and i
-        pe = torch.zeros(max_seq_len, d_model)
-        for pos in range(max_seq_len):
-            for i in range(0, d_model, 2):
-                pe[pos, i] = math.sin(pos / (10000 ** ((2 * i)/d_model)))
-                pe[pos, i + 1] = math.cos(pos / (10000 ** ((2 * (i + 1))/d_model)))
-                
-        pe = pe.unsqueeze(0)
-        self.register_buffer('pe', pe)
-    
-    def forward(self, x):
-        # make embeddings relatively larger
-        x = x * math.sqrt(self.d_model)
-        #add constant to embedding
-        seq_len = x.size(1)
-        x = x + Variable(self.pe[:,:seq_len], requires_grad=False).cuda()
+class AddNorm(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1):
+        super(AddNorm, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.layernorm = nn.LayerNorm(d_model)
+
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+            y: Tensor, shape [batch_size, seq_len, d_model]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+        """
+        return self.layernorm(self.dropout(x + y))
+
+
+class SequenceWiseFFN(nn.Module):
+    def __init__(self, d_in: int, d_out: int, chunk_len: int, activation: str = 'relu', dropout: float = 0.1):
+        super(SequenceWiseFFN, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.f_0 = nn.Linear(in_features=d_in, out_features=d_out)
+        self.f_1 = nn.Linear(in_features=chunk_len, out_features=chunk_len)
+        self.activation = get_activation(name=activation)
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, d_in]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_out]
+        """
+        x = self.activation(self.f_0(self.dropout(inputs)))
+        x = self.f_1(self.dropout(x.transpose(1, 2))).transpose(1, 2)
         return x
 
 
-def attention(q, k, v, d_k, mask=None, dropout=None):
-    
-    scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(d_k)
-    if mask is not None:
-        mask = mask.unsqueeze(1)
-        scores = scores.masked_fill(mask == 0, -1e9)
-    scores = F.softmax(scores, dim=-1)
-        
-    if dropout is not None:
-        scores = dropout(scores)
-        
-    output = torch.matmul(scores, v)
-    return output
+class PositionWiseFFN(nn.Module):
+    def __init__(self, d_in: int, d_model: int, d_out: int, activation: str = 'relu', dropout: float = 0.1):
+        super(PositionWiseFFN, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.f_0 = nn.Linear(in_features=d_in, out_features=d_model)
+        self.f_1 = nn.Linear(in_features=d_model, out_features=d_out)
+        self.activation = get_activation(name=activation)
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [batch_size, seq_len, d_in]
+        Returns:
+            x: Tensor, shape [batch_size, seq_len, d_out]
+        """
+        x = self.activation(self.f_0(self.dropout(inputs)))
+        x = self.f_1(self.dropout(x))
+        return x
 
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, heads, d_model, dropout = 0.1):
-        super().__init__()
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000, batch_first: bool = False):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+        self.batch_first = batch_first
+
+    def forward(self, inputs: Tensor, start_position: int = 0) -> Tensor:
+        """
+        Args:
+            input: Tensor, shape [seq_len, batch_size, d_model],
+                or shape [batch_size, seq_len, d_model] if batch_first is True
+            start_position: delay on time step for input
+        Returns:
+            x: Tensor, shape [seq_len, batch_size, d_model],
+                or shape [batch_size, seq_len, d_model] if batch_first is True
+        """
+        if self.batch_first:
+            x = inputs.transpose(0, 1)
+        x += self.pe[start_position:x.size(0) + start_position]
+        if self.batch_first:
+            x = x.transpose(0, 1)
+        return x
+
+
+class TransformerAttention(nn.Module):
+    def __init__(self, d_in: int, d_model: int, d_out: int, num_heads: int = 1, mask_value: float = 1e-9, dropout: float = 0.1):
+        super(TransformerAttention, self).__init__()
+        self.dropout = nn.Dropout(dropout)
+
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads."
         
         self.d_model = d_model
-        self.d_k = d_model // heads
-        self.h = heads
+        self.d_head = d_model // num_heads
+        self.num_heads = num_heads
+        self.mask_value = mask_value
         
-        self.q_linear = nn.Linear(d_model, d_model)
-        self.v_linear = nn.Linear(d_model, d_model)
-        self.k_linear = nn.Linear(d_model, d_model)
-        self.dropout = nn.Dropout(dropout)
-        self.out = nn.Linear(d_model, d_model)
+        self.f_q = nn.Linear(d_in, d_model)
+        self.f_k = nn.Linear(d_in, d_model)
+        self.f_v = nn.Linear(d_in, d_model)
+        
+        self.f_out = nn.Linear(d_model, d_out)
     
-    def forward(self, q, k, v, mask=None):
+    def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Tensor = None) -> Tuple[Tensor, Tensor]:
+        """
+        Args:
+            q: Tensor, shape [B, T, d_in]
+            k: Tensor, shape [B, T, d_in]
+            v: Tensor, shape [B, T, d_in]
+            mask: Tensor, shape [T, T]
+            Note q == k == v
+        Returns:
+            output: Tensor, shape [B, T, d_out], weighted output
+            scores: Tensor, shape [B, num_heads, T, T], attention scores
+        """
         
-        bs = q.size(0)
+        B, T, _ = q.shape
         
         # perform linear operation and split into h heads
+        q = self.f_q(self.dropout(q)).view(B, T, self.num_heads, self.d_head)
+        k = self.f_k(self.dropout(k)).view(B, T, self.num_heads, self.d_head)
+        v = self.f_v(self.dropout(v)).view(B, T, self.num_heads, self.d_head)
         
-        k = self.k_linear(k).view(bs, -1, self.h, self.d_k)
-        q = self.q_linear(q).view(bs, -1, self.h, self.d_k)
-        v = self.v_linear(v).view(bs, -1, self.h, self.d_k)
-        
-        # transpose to get dimensions bs * h * sl * d_model
-       
-        k = k.transpose(1,2)
+        # transpose to get dimensions B * num_heads * seq_len * d_head
         q = q.transpose(1,2)
+        k = k.transpose(1,2)
         v = v.transpose(1,2)
+        
         # calculate attention using function we will define next
-        scores = attention(q, k, v, self.d_k, mask, self.dropout)
+        x, scores = self.transformer_attention(q, k, v, mask)
         
         # concatenate heads and put through final linear layer
-        concat = scores.transpose(1,2).contiguous().view(bs, -1, self.d_model)
-        
-        output = self.out(concat)
+        x = x.transpose(1,2).contiguous().view(B, T, self.d_model)
+        output = self.f_out(self.dropout(x))
     
-        return output
+        return output, scores
+
+    def transformer_attention(self, q: Tensor, k: Tensor, v: Tensor, mask: Tensor = None):
+        scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(self.d_head)
+        if mask is not None:
+            mask = mask.unsqueeze(1)
+            scores = scores.masked_fill(mask == 0, self.mask_value)
+        scores = F.softmax(scores, dim=-1)
+
+        # scores = self.dropout(scores)
+        output = torch.matmul(scores, v)
+        return output, scores
 
 
-class FeedForward(nn.Module):
-    def __init__(self, d_model, d_ff=2048, dropout = 0.1):
-        super().__init__() 
-        # We set d_ff as a default to 2048
-        self.linear_1 = nn.Linear(d_model, d_ff)
-        self.dropout = nn.Dropout(dropout)
-        self.linear_2 = nn.Linear(d_ff, d_model)
-    def forward(self, x):
-        x = self.dropout(F.relu(self.linear_1(x)))
-        x = self.linear_2(x)
-        return x
+class SelfAttentiveLayer(nn.Module):
 
+    def __init__(self, d_in: int, d_model: int, d_out: int, num_heads: int = 1, dropout: float = 0.1) -> None:
+        super(SelfAttentiveLayer, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-class Norm(nn.Module):
-    def __init__(self, d_model, eps = 1e-6):
-        super().__init__()
-    
-        self.size = d_model
-        # create two learnable parameters to calibrate normalisation
-        self.alpha = nn.Parameter(torch.ones(self.size))
-        self.bias = nn.Parameter(torch.zeros(self.size))
-        self.eps = eps
-    def forward(self, x):
-        norm = self.alpha * (x - x.mean(dim=-1, keepdim=True)) / (x.std(dim=-1, keepdim=True) + self.eps) + self.bias
-        return norm
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads."
 
+        self.d_model = d_model
+        self.d_head = d_model // num_heads
+        self.num_heads = num_heads
 
-class EncoderLayer(nn.Module):
-    def __init__(self, d_model, heads, dropout = 0.1):
-        super().__init__()
-        self.norm_1 = Norm(d_model)
-        self.norm_2 = Norm(d_model)
-        self.attn = MultiHeadAttention(heads, d_model)
-        self.ff = FeedForward(d_model)
-        self.dropout_1 = nn.Dropout(dropout)
-        self.dropout_2 = nn.Dropout(dropout)
+        self.f_v = nn.Linear(d_in, d_model)
+        self.f_s1 = nn.Linear(d_in, d_model)
+        self.f_s2 = nn.Linear(d_model, num_heads)
+        self.f_out = nn.Linear(d_model, d_out)
         
-    def forward(self, x, mask=None):
-        x2 = self.norm_1(x)
-        x = x + self.dropout_1(self.attn(x2,x2,x2,mask))
-        x2 = self.norm_2(x)
-        x = x + self.dropout_2(self.ff(x2))
-        return x
+    
+    def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
+        """
+        Args:
+            inputs: Tensor, shape [B, T, d_in]
+        Returns:
+            outputs: Tensor, shape [B, T, d_out], weighted output
+            scores: Tensor, shape [B, num_heads, T, T], attention scores
+        """
+
+        B, T, _ = inputs.shape
+        
+        v = self.f_v(self.dropout(inputs)).view(B, T, self.d_head, self.num_heads)
+        v = v.permute(0, 3, 1, 2)
+
+        # Compute attentive scores
+        x = self.f_s1(self.dropout(inputs))
+        x = torch.tanh(x)
+        x = self.f_s2(self.dropout(inputs))
+        x = x.transpose(1, 2)
+        scores = F.softmax(x, dim=-1)
+
+        # Weighted average, concat head
+        x = torch.matmul(scores.unsqueeze(2), v).view(B, self.d_model)
+        outputs = self.f_out(self.dropout(x))
+        return outputs, scores
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_in, d_model, N, heads):
-        super().__init__()
-        self.N = N
-        self.embed = Embedder(d_in, d_model)
-        self.pe = PositionalEncoder(d_model)
-        self.layers = nn.Modulelist([EncoderLayer(d_model, heads) for _ in range(N)])
-        self.norm = Norm(d_model)
 
-    def forward(self, src, mask=None):
-        x = self.embed(src)
-        x = self.pe(x)
-        for i in range(self.N):
-            x = self.layers[i](x, mask)
-        return self.norm(x)
+    def __init__(
+        self, 
+        d_model: int,
+        num_heads: int = 1, 
+        mask_value: float = 1e-9, 
+        activation: str = 'relu', 
+        dropout: float = 0.1):
+        super(TransformerEncoder, self).__init__()
+        
+        self.module_transformer_attetion = TransformerAttention(
+            d_in=d_model, d_model=d_model, d_out=d_model, num_heads=num_heads, mask_value=mask_value, dropout=dropout)
+        self.module_addnorm_0 = AddNorm(d_model=d_model, dropout=dropout)
+        self.module_pwffn = PositionWiseFFN(d_in=d_model, d_model=d_model, d_out=d_model, activation=activation, dropout=dropout)
+        self.module_addnorm_1 = AddNorm(d_model=d_model, dropout=dropout)
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        """
+        Args:
+            inputs: Tensor, shape [N, T, d_model]
+        Returns:
+            outputs: Tensor, shape [N, T, d_model]
+        """
+        x_1, _ = self.module_transformer_attetion(inputs, inputs, inputs, mask=None)
+        x = self.module_addnorm_0(inputs, x_1)
+        x_1 = self.module_pwffn(x)
+        outputs = self.module_addnorm_1(x, x_1)
+        return outputs
 
 
-class RetrievelTransformerEncoder(nn.Module):
-    def __init__(self, d_in, d_model, N=1, heads=1, dropout=0.1) -> None:
-        super().__init__()
+class AttentiveEncoder(nn.Module):
 
-        self.transformer_encoder = TransformerEncoder(d_in, d_model, N=N, heads=heads)
-        self.attention = MultiHeadAttention(heads=heads, d_model=d_model, dropout=dropout)
+    def __init__(self, 
+                d_in: int, 
+                d_model: int, 
+                d_out: int,
+                num_encoder_layers: int = 1, 
+                max_len: int = 5000, 
+                num_heads: int = 1, 
+                mask_value: float = 1e-9, 
+                activation: str = 'relu', 
+                dropout: float = 0.1) -> None:
+        super(AttentiveEncoder, self).__init__()
+        self.d_model = d_model
+        self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x):
-        x = self.transformer_encoder(x)
-        x = self.attention(x)
-        x = x.sum(dim=1)
+        self.module_emb = Embedder(d_in=d_in, d_out=d_model)
+        self.module_pe = PositionalEncoding(d_model=d_model, dropout=dropout, max_len=max_len, batch_first=True)
+        self.list_module_transformer_encoder = nn.ModuleList([
+            TransformerEncoder(
+                d_model=d_model, num_heads=num_heads, mask_value=mask_value, activation=activation, dropout=dropout) 
+            for _ in range(num_encoder_layers)])
+        self.module_attentive = SelfAttentiveLayer(d_in=d_model, d_model=d_model, d_out=d_model, num_heads=num_heads, dropout=dropout)
+        self.f_out = nn.Linear(d_model, d_out)
+
+    
+    def forward(self, inputs: Tensor) -> Tensor:
+        """
+        Args:
+            inputs: Tensor, shape [N, T, d_in]
+        Returns:
+            outputs: Tensor, shape [N, d_out]
+            scores: Tensor, shape [N, num_heads, T]
+        """
+        x = self.module_emb(inputs)
+        x = self.module_pe(x * math.sqrt(self.d_model))
+        for encoder in self.list_module_transformer_encoder:
+            x = encoder(x)
+        x, scores = self.module_attentive(x)
+        outputs = self.f_out(self.dropout(x))
+        return outputs, scores
+
+
+class AudioGestureSimilarityNet(nn.Module):
+
+    def __init__(self,
+                d_audio: int,
+                d_motion: int,
+                d_model: int, 
+                num_encoder_layers: int = 1, 
+                max_len: int = 5000, 
+                num_heads: int = 1, 
+                mask_value: float = 1e-9, 
+                activation: str = 'relu', 
+                dropout: float = 0.1) -> None:
+        super(AudioGestureSimilarityNet, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        
+        self.module_audio_encoder = AttentiveEncoder(
+            d_in=d_audio, 
+            d_model=d_model, 
+            d_out=d_model, 
+            num_encoder_layers=num_encoder_layers, 
+            max_len=max_len, 
+            num_heads=num_heads, 
+            mask_value=mask_value, 
+            activation=activation,
+            dropout=dropout)
+
+        self.module_motion_encoder = AttentiveEncoder(
+            d_in=d_motion,
+            d_model=d_model, 
+            d_out=d_model,
+            num_encoder_layers=num_encoder_layers, 
+            max_len=max_len, 
+            num_heads=num_heads, 
+            mask_value=mask_value, 
+            activation=activation,
+            dropout=dropout)
+
+    def forward(self, in_audio: Tensor, in_motion: Tensor) -> Tensor:
+        """
+        Args:
+            in_audio: Tensor, shape [batch_size, T, d_audio]
+            in_motion: Tensor, shape [batch_size, T, d_motion]
+        Returns:
+            similarity: Tensor, shape [N, 1]
+            scores_audio: Tensor, shape [N, num_heads, T], attention score for audio inputs
+            scores_motion: Tensor, shape [N, num_heads, T], attention score for motion inputs
+        """
+        z_audio, scores_audio = self.module_audio_encoder(in_audio)
+        z_motion, scores_motion = self.module_motion_encoder(in_motion)
+        similarity = self.calculate_similarity(z_audio, z_motion)
+        return similarity, scores_audio, scores_motion
+
+    @staticmethod
+    def calculate_similarity(x0: Tensor, x1: Tensor) -> Tensor:
+        """
+        Args:
+            x0: Tensor, shape [batch_size, d_model]
+            x1: Tensor, shape [batch_size, d_model]
+        Returns:
+            outputs: Tensor, shape [N, 1]
+        """
+        return torch.einsum('bd,bd->b', x0, x1).unsqueeze(1)
