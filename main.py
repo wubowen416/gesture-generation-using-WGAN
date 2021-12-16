@@ -62,6 +62,3 @@ if __name__ == "__main__":
 
         # Evaluate KDE
         kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)
-
-        # Category result verification
-        exp.category_result_verification(output_list, data, num_categories=3)
