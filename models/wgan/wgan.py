@@ -128,6 +128,12 @@ class ConditionalWGAN:
                 d_loss.backward()
                 self.d_opt.step()
 
+                print(self.disc.count_parameters())
+
+                print(gradient_penalty.item(), nwd.item())
+
+                # assert 0
+
                 # Train generator
                 # if False:
                 if idx_batch % n_critic == 0:

@@ -332,6 +332,8 @@ class AudioGestureSimilarityNet(nn.Module):
             activation=activation,
             dropout=dropout)
 
+        print("Params count: {}".format(self.count_params()))
+
     def forward(self, in_audio: Tensor, in_motion: Tensor) -> Tensor:
         """
         Args:
@@ -357,3 +359,6 @@ class AudioGestureSimilarityNet(nn.Module):
             outputs: Tensor, shape [N, 1]
         """
         return torch.einsum('bd,bd->b', x0, x1).unsqueeze(1)
+
+    def count_params(self):
+        return sum([p.numel() for p in self.parameters()])

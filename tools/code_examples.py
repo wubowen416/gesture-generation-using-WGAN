@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set()
 import pandas as pd
-from takekuchi_dataset_tool.rot_to_pos import rot2pos
+
 sys.path.append('.')
+from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 from models.wgan.kde_score import calculate_kde
 from datasets.takekuchi_ext.base_dataset_ext import velocity_sum, avg_hand_amplitude
 

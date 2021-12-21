@@ -468,13 +468,13 @@ class ConvDiscriminator(nn.Module):
 
 if __name__ == "__main__":
 
-    T = 10
+    T = 34
 
     in_dir = torch.Tensor(2, T, 27).normal_()
     in_audio = torch.Tensor(2, T, 2).normal_()
-    disc = ConvDiscriminator(2, 27, T, 128, batchnorm=False, layernorm=True)
+    disc = ConvDiscriminator(2, 36, T, 128, batchnorm=False, layernorm=True)
 
-    # print(disc.count_parameters())
+    print(disc.count_parameters())
 
     disc(in_dir, in_audio, debug=True)
 

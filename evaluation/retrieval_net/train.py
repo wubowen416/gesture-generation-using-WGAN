@@ -2,7 +2,6 @@ import argparse
 import datetime
 import os
 import torch
-from torch._C import device
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 import pickle
@@ -23,23 +22,33 @@ def bidirectional_margin_ranking_loss(x: torch.Tensor, margin: float):
     Note:
         For paris A and B of batch size N,
         the x should be the similarity calculated using A and B,
-        such that x = [s(A[0],B[0]), ..., s(A[0],B[N]), ..., s(A[1],B[0]), ..., s(A[1],B[N]), ..., s(A[N],B[1]), ..., s(A[N],B[N])].
-        To calculate the loss, first it is reshaped to shape [N, N],
-        Then the diagnal and off-diagnal elements are splited to shape [N] and [N-1, N], respectively.
-        After that, the differences of similarities between pairs and mismatched pairs can be obtained by simple subtraction.
-        Now the max between the differences, added by margin,  and 0 is computed, resulting in a [N-1, N] tensor.
-        Finally, the sum on [N-1] is taken, averaged on batch dim [N].
+        such that x = [s(A[0],B[0]), ..., s(A[0],B[N]), s(A[1],B[0]), ..., s(A[1],B[N]), ..., s(A[N],B[1]), ..., s(A[N],B[N])].
     """
     N = int(math.sqrt(x.shape[0]))
     x = x.view(N, N)
     diag = torch.diag(x, diagonal=0)
     # Get off-diagnal elements of x
-    off_diag = x.view(-1)[1:].view(N-1, N+1)[:, :-1].reshape(N, N-1).contiguous()
-    mismatchs = off_diag.T
+    off_diag = x.view(-1)[1:].view(N-1, N+1)[:, :-1].contiguous().view(N, N-1)
+    mismatchs = off_diag.T.unsqueeze(1).repeat(1, 2, 1).view(-1, N)
     matchs = diag.unsqueeze(0)
     diff = (mismatchs - matchs + margin).unsqueeze(-1)
-    loss = 2 * (torch.max(torch.cat([torch.zeros_like(diff), diff], dim=2).view(-1, 2), dim=1).values.view(N-1, N)).sum(dim=0).mean()
+    loss = torch.max(torch.cat([torch.zeros_like(diff), diff], dim=2), dim=2).values.sum(dim=0).mean()
     return loss
+
+
+def calculate_rank_n_accuracy(outputs, n=1):
+    """Args:
+        x: Tensor, shape [B, B, 1]
+        n: rank
+    Note:
+        For paris A and B of batch size N,
+        such that x = [[s(A[0],B[0]), ..., s(A[0],B[N])], [s(A[1],B[0]), ..., s(A[1],B[N])], ..., [s(A[N],B[1]), ..., s(A[N],B[N])]].
+    """
+    y_pred_n = np.argsort(-outputs, axis=1)[:, :n]
+    y_true = np.arange(outputs.shape[0])[:, np.newaxis]
+    n_false = np.sum(np.sum(((y_true - y_pred_n) == 0), axis=1) == 0)
+    acc = 1 - n_false / outputs.shape[0]
+    return acc
 
 
 class RetrievalDataset:
@@ -122,7 +131,7 @@ class RetrievalDataset:
         return speechs, motions
 
 
-def train(args, log_dir):
+def train(args, log_dir, date):
 
     data = RetrievalDataset(args.data_dir, args.chunk_len, args.stride_len, valid_size=args.valid_size)
     d_speech, d_motion = data.get_dims()
@@ -140,10 +149,11 @@ def train(args, log_dir):
         dropout=args.dropout).to(args.device)
 
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.n_epochs//4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.n_epochs//5)
 
     best_loss = np.inf
-    writer = SummaryWriter(log_dir=log_dir)
+    train_writer = SummaryWriter(log_dir=f'{log_dir}/tb_{date}/train')
+    valid_writer = SummaryWriter(log_dir=f'{log_dir}/tb_{date}/valid')
     for epoch in range(args.n_epochs):
         print(f"Epoch {epoch+1}:")
         # Training
@@ -183,44 +193,90 @@ def train(args, log_dir):
             torch.save(model.state_dict(), f'{log_dir}/best.pt')
 
         # Tensorboard log
-        writer.add_scalar('train_loss', train_loss, epoch)
-        writer.add_scalar('valid_loss', valid_loss, epoch)
+        train_writer.add_scalar('loss', train_loss, epoch)
+        valid_writer.add_scalar('loss', valid_loss, epoch)
 
         print(f"train_loss: {train_loss:6f}, valid_loss: {valid_loss:6f}")
 
+    
+def test(args, log_dir, device='cpu'):
+ 
+    # Load data
+    data = RetrievalDataset(args.data_dir, args.chunk_len, args.chunk_len, valid_size=args.valid_size)
+    dataset = data.get_test_dataset()[:]
+    num_samples = len(dataset[0])
+    d_speech, d_motion = data.get_dims()
+
+    # Load model
+    model = AudioGestureSimilarityNet(
+        d_audio=d_speech,
+        d_motion=d_motion,
+        d_model=args.d_model,
+        num_encoder_layers=args.num_encoder_layers,
+        num_heads=args.num_heads,
+        activation=args.activation,
+        dropout=args.dropout).to(device)
+
+    model.load_state_dict(torch.load(f'{log_dir}/best.pt'))
+
+    # Predicting
+    speechs, motions = data.make_train_batch(*dataset)
+    model.eval()
+    with torch.no_grad():
+        speechs = speechs.to(device)
+        motions = motions.to(device)
+        outputs, _, _ = model(speechs, motions)
+
+    outputs = outputs.view(num_samples, num_samples).numpy()
+
+    rank_1_acc = calculate_rank_n_accuracy(outputs, n=1)
+    rank_3_acc = calculate_rank_n_accuracy(outputs, n=3)
+    rank_5_acc = calculate_rank_n_accuracy(outputs, n=5)
+
+    print("Rank@1: {:.3f}%".format(rank_1_acc*100))
+    print("Rank@3: {:.3f}%".format(rank_3_acc*100))
+    print("Rank@5: {:.3f}%".format(rank_5_acc*100))
+    print(f"n_smaples: {num_samples}")
+
+    with open(f'{log_dir}/rank@n.txt', 'w') as f:
+        f.write(f"Rank 1: {rank_1_acc*100}\n")
+        f.write(f"Rank 3: {rank_3_acc*100}\n")
+        f.write(f"Rank 5: {rank_5_acc*100}\n")
+        f.write(f"n_smaples: {num_samples}\n")
+    
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Train retrieval net.')
 
-    parser.add_argument('--device', default='cuda', help="Device for running pytorch model.")
-    parser.add_argument('--seed', default=1, help="Reproducibility.")
+    parser.add_argument('--device', default='cuda', type=str, help="Device for running pytorch model.")
+    parser.add_argument('--seed', default=1, type=int, help="Reproducibility.")
 
-    parser.add_argument('--data_dir', default='./data/takekuchi/prosody_hip', help="Processed data path.")
-    parser.add_argument('--chunk_len', default=34, help="Length for making data chunks.")
-    parser.add_argument('--stride_len', default=17, help="Stride for making data chunks.")
+    parser.add_argument('--data_dir', default='./data/takekuchi/processed/prosody_hip', type=str, help="Processed data path.")
+    parser.add_argument('--chunk_len', default=34, type=int, help="Length for making data chunks.")
+    parser.add_argument('--stride_len', default=17, type=int, help="Stride for making data chunks.")
 
-    parser.add_argument('--valid_size', default=0.1, help="Ratio of data for validation during training.")
-    parser.add_argument('--batch_size', default=32, help="Batch size for training.")
-    parser.add_argument('--n_epochs', default=100, help="Total epoch for training.")
-    parser.add_argument('--lr', default=1e-3, help="Learning rate.")
-    parser.add_argument('--margin', default=0.05, help="Margin for training in loss funtion.")
+    parser.add_argument('--valid_size', default=0.1, type=float, help="Ratio of data for validation during training.")
+    parser.add_argument('--batch_size', default=32, type=int, help="Batch size for training.")
+    parser.add_argument('--n_epochs', default=100, type=int, help="Total epoch for training.")
+    parser.add_argument('--lr', default=1e-3, type=float, help="Learning rate.")
+    parser.add_argument('--margin', default=0.05, type=float, help="Margin for training in loss funtion.")
 
-    parser.add_argument('--d_model', default=128)
-    parser.add_argument('--num_encoder_layers', default=1)
-    parser.add_argument('--num_heads', default=1)
-    parser.add_argument('--activation', default='relu')
-    parser.add_argument('--dropout', default=0.1)
+    parser.add_argument('--d_model', default=256, type=int)
+    parser.add_argument('--num_encoder_layers', default=1, type=int)
+    parser.add_argument('--num_heads', default=1, type=int)
+    parser.add_argument('--activation', default='relu', type=str)
+    parser.add_argument('--dropout', default=0.1, type=float)
 
     args = parser.parse_args()
     
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    log_dir = 'evaluation/retrieval_net/logs/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    date = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = 'evaluation/retrieval_net/logs/' + date
     os.makedirs(log_dir, exist_ok=True)
     with open(f'{log_dir}/args.txt', 'w') as f:
         json.dump(args.__dict__, f, indent=2)
-    train(args, log_dir)
-
-    
+    train(args, log_dir, date)
+    test(args, log_dir)
