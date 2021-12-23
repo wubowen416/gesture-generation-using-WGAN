@@ -15,7 +15,7 @@ from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
 
 def generate_result_on_test_set(model, data):
-    output_list, motion_list = model.synthesize_batch(data.get_test_dataset())
+    output_list, _, motion_list = model.synthesize_batch(data.get_test_dataset())
     for i, output in enumerate(output_list):
         data.save_unity_result(output.cpu().numpy(), os.path.join(f"synthesized/motion_{i}.txt"), hip=True)
     return output_list, motion_list

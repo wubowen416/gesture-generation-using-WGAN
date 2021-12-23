@@ -169,7 +169,7 @@ class ConditionalWGAN:
                     # if True:
                         print("generate samples")
                         # Generate result on dev set
-                        output_list, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                        output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
                         # for i, output in enumerate(output_list):
                         #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
                         # Evaluate KDE
@@ -196,14 +196,15 @@ class ConditionalWGAN:
         self.gen.load_state_dict(torch.load(chkpt_path, map_location=self.device))
     
     def synthesize_batch(self, batch_data):
-        output_list, motion_list = [], []
+        output_list, motion_list, output_chunk_list = [], [], []
         for i, (speech, motion) in enumerate(batch_data):
             if len(motion) < self.chunklen:
                 continue
-            output = self.synthesize_sequence(speech)
+            output, output_chunks = self.synthesize_sequence(speech)
             output_list.append(output)
+            output_chunk_list.append(output_chunks)
             motion_list.append(motion)
-        return output_list, motion_list
+        return output_list, output_chunk_list, motion_list
 
     
     def synthesize_sequence(self, speech_chunks):
@@ -235,7 +236,7 @@ class ConditionalWGAN:
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen-self.seedlen]], dim=0)
             else: # last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
-        return motion
+        return motion, torch.cat(motion_chunks, dim=0)
 
 
     def sample_noise(self, batch_size, device, mean=0, std=1):

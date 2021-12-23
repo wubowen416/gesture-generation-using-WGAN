@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/hip",
+        "processed": "data/takekuchi/processed/prosody_hip",
         "log": "results"
     },
 

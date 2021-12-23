@@ -19,7 +19,7 @@ def create_hierarchy_nodes():
         nodes: array of markers to be used in motion processing
     """
 
-    with open("tools/hierarchy.txt", 'r') as f:
+    with open("tools/takekuchi_dataset_tool/hierarchy.txt", 'r') as f:
         hierarchy = f.readlines()
 
 
