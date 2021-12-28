@@ -26,9 +26,9 @@ def send_motion(motion, commu_client):
     # Make Commu command
     command = F.CommuCommand(rotation_data)
     command.to_csv('t.txt')
-    send_command = command.to_command()
+    # send_command = command.to_command()
     # send motion via tcp/ip
-    commu_client.sendall(send_command)
+    # commu_client.sendall(send_command)
 
     return position
 

@@ -209,63 +209,51 @@ class CommuCommand:
         right_yoko_euler[right_yoko_euler < -25] = -25
 
         # Collide with body
-        # 2-A left hand
-        def f(x):
-            return -0.75 * x + 37.5
-        def inv_f(y):
-            return (37.5 - y) / 0.75
+        # Left hand
+        for i, x, y in enumerate(zip(left_tate_euler, left_yoko_euler)):
 
-        for i, (x, y) in enumerate(zip(left_tate_euler, left_yoko_euler)):
-
-            if x > 10 and x < 50 and y > 0:
-                y_of_x = f(x)
-                if y >= y_of_x: # Above the line
-                    x_of_y = inv_f(y)
-                    y = (y + y_of_x) / 2
-                    x = (x + x_of_y) / 2
-
-            if x >= 50 and y > 0:
-                y = 0
+            if x > 40:
+                if y > 0 :
+                    left_yoko_euler[i] = 0
             
-            if x < -40 and y > 40:
-                x_dis = -x - 40
-                y_dis = y - 40
-                if x_dis < y_dis:
-                    x = -40
-                else:
-                    y = 40
-
-            left_tate_euler[i] = int(x)
-            left_yoko_euler[i] = int(y)
-
-        # 2-B right hand
-        def f(x):
-            return -0.75 * x - 37.5
-        def inv_f(y):
-            return -(37.5 + y) / 0.75
-
-        for i, (x, y) in enumerate(zip(right_tate_euler, right_yoko_euler)):
-
-            if x < -50 and y < 0 :
-                y = 0
-
-            if x < -10 and y < 0 and x > -50:
-                y_of_x = f(x)
-                if y <= y_of_x: # Above the line
-                    x_of_y = inv_f(y)
-                    y = (y + y_of_x) / 2
-                    x = (x + x_of_y) / 2
+            elif x > 30 and x < 40:
+                if y > 10:
+                    left_yoko_euler[i] = 10
             
-            if x > 40 and y < -40:
-                x_dis = x - 40
-                y_dis = - y - 40
-                if x_dis < y_dis:
-                    x = 40
-                else:
-                    y = -40
+            elif x > 20 and x < 30:
+                if y > 20:
+                    left_yoko_euler[i] = 20
+
+            elif x > 10 and x < 20:
+                if y > 25:
+                    left_yoko_euler[i] = 25
+
+            elif x < -40:
+                if y > 40:
+                    left_yoko_euler[i] = 40
+
+        # Right hand
+        for i, x, y in enumerate(zip(left_tate_euler, left_yoko_euler)):
+
+            if x < - 40:
+                if y < 0 :
+                    left_yoko_euler[i] = 0
             
-            right_yoko_euler[i] = int(y)
-            right_tate_euler[i] = int(x)
+            elif x < - 30 and x > - 40:
+                if y < - 10:
+                    left_yoko_euler[i] = - 10
+            
+            elif x < - 20 and x > - 30:
+                if y < - 20:
+                    left_yoko_euler[i] = - 20
+
+            elif x < - 10 and x > - 20:
+                if y < - 25:
+                    left_yoko_euler[i] = - 25
+
+            elif x > 40:
+                if y < - 40:
+                    left_yoko_euler[i] = - 40
 
         # import matplotlib.pyplot as plt
         # import matplotlib
