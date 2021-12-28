@@ -210,7 +210,7 @@ class CommuCommand:
 
         # Collide with body
         # Left hand
-        for i, x, y in enumerate(zip(left_tate_euler, left_yoko_euler)):
+        for i, (x, y) in enumerate(zip(left_tate_euler, left_yoko_euler)):
 
             if x > 40:
                 if y > 0 :
@@ -233,27 +233,27 @@ class CommuCommand:
                     left_yoko_euler[i] = 40
 
         # Right hand
-        for i, x, y in enumerate(zip(left_tate_euler, left_yoko_euler)):
+        for i, (x, y) in enumerate(zip(right_tate_euler, right_yoko_euler)):
 
             if x < - 40:
                 if y < 0 :
-                    left_yoko_euler[i] = 0
+                    right_yoko_euler[i] = 0
             
             elif x < - 30 and x > - 40:
                 if y < - 10:
-                    left_yoko_euler[i] = - 10
+                    right_yoko_euler[i] = - 10
             
             elif x < - 20 and x > - 30:
                 if y < - 20:
-                    left_yoko_euler[i] = - 20
+                    right_yoko_euler[i] = - 20
 
             elif x < - 10 and x > - 20:
                 if y < - 25:
-                    left_yoko_euler[i] = - 25
+                    right_yoko_euler[i] = - 25
 
             elif x > 40:
                 if y < - 40:
-                    left_yoko_euler[i] = - 40
+                    right_yoko_euler[i] = - 40
 
         # import matplotlib.pyplot as plt
         # import matplotlib
@@ -315,8 +315,8 @@ class CommuCommand:
             if speed_3 == 0:
                 if i == 0:
                     sheet[3, i] = 0
-                # else:
-                #     sheet[3, i-1] = left_yoko_euler[i-1]
+                else:
+                    sheet[3, i-1] = left_yoko_euler[i-1]
             if speed_4 == 0:
                 if i == 0:
                     sheet[4, i] = -90
@@ -325,8 +325,8 @@ class CommuCommand:
             if speed_5 == 0:
                 if i == 0:
                     sheet[4, i] = 0
-                # else:
-                #     sheet[5, i-1] = right_yoko_euler[i-1]
+                else:
+                    sheet[5, i-1] = right_yoko_euler[i-1]
 
             lines.append(line + "\n")
 

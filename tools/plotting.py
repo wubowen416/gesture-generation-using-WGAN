@@ -50,9 +50,9 @@ def plot_position_3D(motion, path, mode):
     anim = FuncAnimation(fig, update_graph, range(motion.shape[0]), interval=50)
 
     if mode == 'gif':
-        anim.save(path + '.gif', writer='imagemagick')
+        anim.save(path + '.gif')
     elif mode == 'mp4':
-        anim.save(path + '.mp4', writer='ffmpeg')
+        anim.save(path + '.mp4')
 
     plt.close()
 
