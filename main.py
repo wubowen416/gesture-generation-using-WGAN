@@ -11,6 +11,10 @@ from tools import code_examples as exp
 import datasets
 import models
 
+import torch
+torch.backends.cudnn.benchmark = True
+import numpy as np
+
 
 if __name__ == "__main__":
     args = docopt(__doc__)
@@ -34,8 +38,10 @@ if __name__ == "__main__":
     log_dir = os.path.join(hparams.Dir.log, "log_" + date)
     # print("log_dir:" + str(log_dir))
     
-    
     is_training = hparams.Infer.pre_trained == ""
+
+    np.random.seed(hparams.seed)
+    torch.manual_seed(hparams.seed)
     
     data = dataset_class(hparams, is_training)
     cond_dim, motion_dim = data.get_dims()

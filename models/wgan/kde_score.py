@@ -3,6 +3,13 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity
 
 
+def calculate_kde_batch(inputs, targets):
+    inputs = np.concatenate(inputs, axis=0)
+    targets = np.concatenate(targets, axis=0)
+    mean, std, se = calculate_kde(inputs, targets)
+    return mean, std, se
+
+
 def calculate_kde(inputs, targets, verbose=0):
     params = {'bandwidth': np.logspace(-1, 1, 20)}
     grid = GridSearchCV(KernelDensity(), params, cv=3)

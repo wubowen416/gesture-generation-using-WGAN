@@ -1,5 +1,4 @@
 import pandas as pd
-from python_speech_features.base import mfcc
 import tqdm
 import pickle
 import argparse
@@ -12,7 +11,7 @@ from bvh_to_rot import vectorize_bvh_to_rotation
 from audio_feature import semitone_prosody, calculate_mfcc
 
 
-FEATURE_TYPE = "mfcc_prosody"
+FEATURE_TYPE = "prosody"
 
 
 def shorten(arr1, arr2):
@@ -67,7 +66,7 @@ def create(name, dataset_dir, data_dir):
     df = pd.read_csv(df_path)
     X, Y = [], []
 
-    for i in tqdm.tqdm(range(len(df))):
+    for i in tqdm.tqdm(range(len(df)), ascii=True):
         input_vectors, output_vectors = create_vectors(df['wav_filename'][i], df['bvh_filename'][i])
 
         X.append(input_vectors.astype(float))
@@ -95,7 +94,7 @@ def parse_arg():
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
     parser.add_argument('--dataset-dir', default='./data/takekuchi/source/split',
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--data-dir', default=f'./data/takekuchi/processed/{FEATURE_TYPE}',
+    parser.add_argument('--data-dir', default=f'./data/takekuchi/processed/{FEATURE_TYPE}_flt', # flt represents filtered
                         help="Specify processed data save dir")
     return parser.parse_args()
 

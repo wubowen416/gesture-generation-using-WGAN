@@ -1,4 +1,10 @@
 {
+    "wandb": {
+        "project_name": "gesture_generation",
+        "entity": "wubowen",
+        "run_name": "wgan_vel"
+    },
+
     "Dir": {
         "processed": "data/takekuchi/processed/prosody",
         "log": "results"
@@ -25,19 +31,23 @@
         "Discriminator": {
             "hidden": 128,
             "batchnorm": false,
-            "layernorm": true
+            "layernorm": true,
+            "dropout": 0
         }
     },
 
     "Train": {
         "n_epochs": 150,
         "batch_size": 128,
+        "lr": 1e-4,
         "n_critic": 10,
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
-        "log_gap": 750
+        "log_gap": 1500,
+        "use_vel": false
     },
 
-    "device": "cuda"
+    "device": "cuda",
+    "seed": 0
 }

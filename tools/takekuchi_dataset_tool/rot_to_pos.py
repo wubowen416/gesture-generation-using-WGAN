@@ -19,7 +19,7 @@ def create_hierarchy_nodes():
         nodes: array of markers to be used in motion processing
     """
 
-    with open("tools/hierarchy.txt", 'r') as f:
+    with open("tools/takekuchi_dataset_tool/hierarchy.txt", 'r') as f:
         hierarchy = f.readlines()
 
 
@@ -145,6 +145,7 @@ def rot_vec_to_abs_pos_vec(frames, nodes):
 
 
 def remove_extra_joints_in_pos(motion):
+    # Remove Neck to back before shoulder
     T = motion.shape[0]
     motion = motion.reshape(-1, 14, 3)
     motion = np.concatenate([
