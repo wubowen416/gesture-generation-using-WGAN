@@ -1,18 +1,13 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/prosody_hip_ext",
+        "processed": "./data/takekuchi/processed/prosody",
         "log": "results"
     },
 
     "Data": {
         "valid_ratio": 0.1,
         "chunklen": 34,
-        "seedlen": 4,
-        "extraversion": {
-            "high": 0,
-            "middle": 1,
-            "low": 2
-        }
+        "seedlen": 4
     },
 
     "Infer": {

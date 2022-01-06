@@ -12,7 +12,7 @@ from bvh_to_rot import vectorize_bvh_to_rotation
 from audio_feature import semitone_prosody, calculate_mfcc
 
 
-FEATURE_TYPE = "mfcc_prosody"
+FEATURE_TYPE = "prosody"
 
 
 def shorten(arr1, arr2):
