@@ -1,5 +1,9 @@
 import os
+<<<<<<< HEAD
 from unicodedata import name
+=======
+from typing import Generator
+>>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
 import numpy as np
 import torch
 from torch import autograd
@@ -16,6 +20,14 @@ import sys
 sys.path.append('.')
 from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
+<<<<<<< HEAD
+=======
+import wandb
+wandb.init(project='gesture_generation', name='prosody_text')
+wandb.define_metric('kde_rot', summary='max')
+
+torch.backends.cudnn.benchmark = True
+>>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
 
 class ConditionalWGAN:
 
@@ -78,194 +90,161 @@ class ConditionalWGAN:
         # cl
         cl_lambda = hparams.Train.cl_lambda
 
-        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=lr)
-        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=lr)
-
-        # Get dataloader
-        train_loader = DataLoader(
-            data.get_train_dataset(),
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=4)
-
         # Log relative
         n_iteration = 0
         gen_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
 
-        # Log
-        wandb.init(project=hparams.wandb.project_name, entity=hparams.wandb.entity, name=hparams.wandb.run_name)
-        wandb.config = {
-            "seed": hparams.seed,
-            "learning_rate": lr,
-            "epochs": n_epochs,
-            "batch_size": batch_size
-        }
-        wandb.define_metric("kde_rot", summary="max")
-        wandb.define_metric("kde_rot_vel", summary="max")
-        wandb.define_metric("kde_rot_acc", summary="max")
-        # wandb.define_metric("kde_pos", summary="max")
-        # wandb.define_metric("kde_pos_vel", summary="max")
-        # wandb.define_metric("kde_pos_acc", summary="max")
+        # train_loader = DataLoader(
+        #     data.get_train_dataset(),
+        #     batch_size=batch_size,
+        #     shuffle=True,
+        #     num_workers=4)
+
+        
         
         for epoch in range(n_epochs):
 
             print(f"Epoch {epoch}/{n_epochs}")
 
-            for idx_batch, (seed, cond, target) in tqdm(enumerate(train_loader), total=len(train_loader), ascii=True):
+            train_dataset_generator = data.get_train_dataset()
+            
+            counter = 0
 
-                # to device
-                seed = seed.to(self.device)
-                cond = cond.to(self.device)
-                target = target.to(self.device)
+            for train_dataset in train_dataset_generator:
 
-                # Train discriminator
-                self.disc.train()
-                self.d_opt.zero_grad()
-                
-                latent = self.sample_noise(cond.shape[0], device=self.device)
-                with torch.no_grad():
-                    gen_outputs = self.gen(seed, latent, cond)
+                print(counter)
+                counter += 1
 
-                if self.use_vel:
-                    # Compute velocity
-                    gen_velocity = torch.zeros_like(gen_outputs)
-                    gen_velocity[:, 1:] = gen_outputs[:, 1:] - gen_outputs[:, :-1]
-                    target_velocity = torch.zeros_like(target)
-                    target_velocity[:, 1:] = target[:, 1:] - target[:, :-1]
-                    target = torch.cat([target, target_velocity], dim=-1)
-                    gen_outputs = torch.cat([gen_outputs, gen_velocity], dim=-1)
+                train_loader = DataLoader(
+                    train_dataset,
+                    batch_size=batch_size,
+                    shuffle=True,
+                    num_workers=1)
 
-                nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
+                for idx_batch, (seed, cond, target) in enumerate(train_loader):
+                    print("batch start")
+                    print("idx batch", idx_batch)
 
-                # --------------------------------------------------------------------------------
-                # Compute gradient penalty
-                # Random weight term for interpolation between real and fake samples
-                alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
-                # Get random interpolation between real and fake samples
-                interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
-                d_interpolate = self.disc(interpolate, cond)
-                gradients = autograd.grad(
-                    outputs=d_interpolate,
-                    inputs=interpolate,
-                    grad_outputs=torch.ones_like(d_interpolate),
-                    create_graph=True,
-                    retain_graph=True,
-                    only_inputs=True,
-                )[0]
-                gradients = gradients.reshape(gradients.size(0), -1)
-                if gp_zero_center:
-                    # Zero-centered gradient penalty
-                    # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
-                    gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
-                else:
-                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                d_loss = nwd + gp_lambda * gradient_penalty
-                # --------------------------------------------------------------------------------
+                    # to device
+                    seed = seed.to(self.device)
+                    cond = cond.to(self.device)
+                    target = target.to(self.device)
 
-                d_loss.backward()
-                self.d_opt.step()
-
-                # Train generator
-                # if False:
-                if idx_batch % n_critic == 0:
-                    self.gen.train()
-                    self.g_opt.zero_grad()
+                    # Train discriminator
+                    self.disc.train()
+                    self.d_opt.zero_grad()
 
                     latent = self.sample_noise(cond.shape[0], device=self.device)
-                    gen_outputs = self.gen(seed, latent, cond)
-
-                    if self.use_vel:
-                        # Compute velocity
-                        gen_velocity = torch.zeros_like(gen_outputs)
-                        gen_velocity[:, 1:] = gen_outputs[:, 1:] - gen_outputs[:, :-1]
-                        gen_outputs = torch.cat([gen_outputs, gen_velocity], dim=-1)
-
-                    # Loss
-                    critic = - self.disc(gen_outputs, cond).mean()
+                    with torch.no_grad():
+                        gen_outputs = self.gen(seed, latent, cond)
+                    nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
 
                     # --------------------------------------------------------------------------------
-                    # continuity loss
-                    pre_pose_error = F.smooth_l1_loss(
-                        gen_outputs[:, :self.seedlen, :self.output_dim], seed[:, :self.seedlen], reduction='none')
-                    pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
-                    pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                    g_loss = critic + cl_lambda * pre_pose_error
-                    # --------------------------------------------------------------------------------
+                    # Compute gradient penalty
+                    # Random weight term for interpolation between real and fake samples
+                    alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
+                    # Get random interpolation between real and fake samples
+                    interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
+                    d_interpolate = self.disc(interpolate, cond)
+                    gradients = autograd.grad(
+                        outputs=d_interpolate,
+                        inputs=interpolate,
+                        grad_outputs=torch.ones_like(d_interpolate),
+                        create_graph=True,
+                        retain_graph=True,
+                        only_inputs=True,
+                    )[0]
+                    # print("10")
+                    # gradients = gradients.reshape(gradients.size(0), -1)
+                    # print("11")
+                    # if gp_zero_center:
+                    #     # Zero-centered gradient penalty
+                    #     # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
+                    #     gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
+                    # else:
+                    #     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    # print("12")
+                    # d_loss = nwd + gp_lambda * gradient_penalty
+                    # # --------------------------------------------------------------------------------
 
-                    g_loss.backward()
-                    self.g_opt.step()
+                    # print("13")
+                    # d_loss.backward()
+                    # self.d_opt.step()
 
-                    w_distance = - nwd.item()
-                    wandb.log({
-                        "gen_loss": critic.item(),
-                        "cl_loss": pre_pose_error.item(),
-                        "w_distance": w_distance,
-                        "gp_loss": gradient_penalty.item()
-                    }, step=n_iteration)
+                    # # Train generator
+                    # # if False:
+                    # if idx_batch % n_critic == 0:
+                    #     print("14")
+                    #     self.gen.train()
+                    #     self.g_opt.zero_grad()
+                    #     print("15")
+                    #     latent = self.sample_noise(cond.shape[0], device=self.device)
+                    #     gen_outputs = self.gen(seed, latent, cond)
 
-                    # Log
-                    if gen_iteration > 0 and gen_iteration % log_gap == 0:
-                    # if True:
-                        print("generate samples")
-                        # Generate result on dev set
-                        output_list, motion_list = self.synthesize_batch(data.get_dev_dataset(), numpy=True)
-                        # for i, output in enumerate(output_list):
-                        #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
-                        # Evaluate KDE
-                        rot_outputs = list(map(data.motion_scaler.inverse_transform, output_list))
-                        rot_targets = list(map(data.motion_scaler.inverse_transform, motion_list))
+                    #     # Loss
+                    #     print("16")
+                    #     critic = - self.disc(gen_outputs, cond).mean()
 
-                        # Rotation level
-                        print("Evaluating rotation")
-                        kde_rot, _, _ = calculate_kde_batch(rot_outputs, rot_targets)
+                    #     # --------------------------------------------------------------------------------
+                    #     # continuity loss
+                    #     print("17")
+                    #     pre_pose_error = F.smooth_l1_loss(
+                    #         gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
+                    #     pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
+                    #     pre_pose_error = pre_pose_error.mean() # mean over batch samples
+                    #     g_loss = critic + cl_lambda * pre_pose_error
+                    #     # --------------------------------------------------------------------------------
+                    #     print("18")
+                    #     g_loss.backward()
+                    #     self.g_opt.step()
 
-                        # Rotation velocity level
-                        print("Evaluating rotation velocity")
-                        rot_vel_outputs = list(map(compute_velocity, rot_outputs))
-                        rot_vel_targets = list(map(compute_velocity, rot_targets))
-                        kde_rot_vel, _, _ = calculate_kde_batch(rot_vel_outputs, rot_vel_targets)
+                    #     w_distance = - nwd.item()
+                    #     # Estimated w-distance (opposite to disc loss)
+                    #     writer.add_scalar("loss/w-distance", w_distance, n_iteration)
+                    #     # Pre pose error
+                    #     writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), n_iteration)
+                    #     # generator loss (critic)
+                    #     writer.add_scalar("loss/gen-loss", critic.item(), n_iteration)
+                    #     # gradient penalty
+                    #     writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
 
-                        # Rotation acceleration level
-                        print("Evaluating rotation acceleration")
-                        rot_acc_outputs = list(map(compute_derivative, rot_vel_outputs))
-                        rot_acc_targets = list(map(compute_derivative, rot_vel_targets))
-                        kde_rot_acc, _, _ = calculate_kde_batch(rot_acc_outputs, rot_acc_targets)
+                    #     wandb.log({
+                    #         "w_distance": w_distance,
+                    #         "cl_loss": pre_pose_error.item(),
+                    #         "gp_loss": gradient_penalty.item(),
+                    #         "gen_loss": critic.item(),
+                    #     }, step=n_iteration)
 
-                        # Position level
-                        # print("Evaluating position")
-                        # pos_outputs = list(map(rot2pos, rot_outputs))
-                        # pos_targets = list(map(rot2pos, rot_targets))
-                        # kde_pos, _, _ = calculate_kde_batch(pos_outputs, pos_targets)
+                    #     # print("Estimated w-distance: {:.4f}".format(w_distance))
 
-                        # # Position velocity level
-                        # print("Evaluating position velocity")
-                        # pos_vel_outputs = list(map(compute_velocity, pos_outputs))
-                        # pos_vel_targets = list(map(compute_velocity, pos_targets))
-                        # kde_pos_vel, _, _ = calculate_kde_batch(pos_vel_outputs, pos_vel_targets)
+                    #     # Log
+                    #     if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                    #     # if True:
+                    #         print("generate samples")
+                    #         # Generate result on dev set
+                    #         output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                    #         # for i, output in enumerate(output_list):
+                    #         #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
+                    #         # Evaluate KDE
+                    #         output = torch.cat(output_list, dim=0).cpu().numpy()
+                    #         motion = torch.cat(motion_list, dim=0).cpu().numpy()
+                    #         output = data.motion_scaler.inverse_transform(output)
+                    #         motion = data.motion_scaler.inverse_transform(motion)
+                    #         kde_mean, _, kde_se = calculate_kde(output, motion)
+                    #         writer.add_scalar("kde/mean", kde_mean, n_iteration)
+                    #         writer.add_scalar("kde/se", kde_se, n_iteration)
 
-                        # # Position acceleration level
-                        # print("Evaluating position acceleration")
-                        # pos_acc_outputs = list(map(compute_derivative, pos_vel_outputs))
-                        # pos_acc_targets = list(map(compute_derivative, pos_vel_targets))
-                        # kde_pos_acc, _, _ = calculate_kde_batch(pos_acc_outputs, pos_acc_targets)
+                    #         wandb.log({"kde_rot": w_distance}, step=n_iteration)
 
-                        wandb.log({
-                            "kde_rot": kde_rot,
-                            "kde_rot_vel": kde_rot_vel,
-                            "kde_rot_acc": kde_rot_acc,
-                            # "kde_pos": kde_pos,
-                            # "kde_pos_vel": kde_pos_vel,
-                            # "kde_pos_acc": kde_pos_acc
-                        }, step=n_iteration)
+                    #         # Save model
+                    #         self.save(log_dir, n_iteration)
 
-                        # Save model
-                        self.save(log_dir, n_iteration)
+                    #     gen_iteration += 1
 
-                    gen_iteration += 1
-
-                n_iteration += 1
+                    # n_iteration += 1
+                    print("batch end")
 
         wandb.finish()
 
@@ -277,6 +256,7 @@ class ConditionalWGAN:
     def load(self, chkpt_path):
         self.gen.load_state_dict(torch.load(chkpt_path, map_location=self.device))
     
+<<<<<<< HEAD
     def synthesize_batch(self, batch_data, numpy=False):
         output_list, motion_list = [], []
         for i, (speech, motion) in enumerate(batch_data):
@@ -290,6 +270,18 @@ class ConditionalWGAN:
                 output_list.append(output)
                 motion_list.append(motion)
         return output_list, motion_list
+=======
+    def synthesize_batch(self, batch_data):
+        output_list, motion_list, output_chunk_list = [], [], []
+        for i, (speech, motion) in enumerate(batch_data):
+            if len(motion) < self.chunklen:
+                continue
+            output, output_chunks = self.synthesize_sequence(speech)
+            output_list.append(output)
+            output_chunk_list.append(output_chunks)
+            motion_list.append(motion)
+        return output_list, output_chunk_list, motion_list
+>>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
 
     
     def synthesize_sequence(self, speech_chunks):
@@ -321,7 +313,7 @@ class ConditionalWGAN:
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen-self.seedlen]], dim=0)
             else: # last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
-        return motion
+        return motion, torch.cat(motion_chunks, dim=0)
 
 
     def sample_noise(self, batch_size, device, mean=0, std=1):

@@ -12,6 +12,9 @@ class TakekuchiDataset:
     def __init__(self, hparams, is_training):
 
         data_dir = hparams.Dir.processed
+
+        self.chunklen = hparams.Data.chunklen
+        self.seedlen = hparams.Data.seedlen
         
         # Load scalers
         self.speech_scaler = jl.load(os.path.join(data_dir, 'speech_scaler.jl'))
@@ -25,16 +28,15 @@ class TakekuchiDataset:
             with open(os.path.join(data_dir, "Y_train.p"), 'rb') as f:
                 train_output = pickle.load(f)
 
-            train_input = list(map(self.speech_scaler.transform, train_input))
-            # train_output = list(map(lowpass_filter, train_output))
-            train_output = list(map(self.motion_scaler.transform, train_output))
+            self.train_input = list(map(self.speech_scaler.transform, train_input))
+            self.train_output = list(map(self.motion_scaler.transform, train_output))
 
             # Split validation 
             # train_input, val_input, train_output, val_output = train_test_split(
             #     train_input, train_output, test_size=hparams.Data.valid_ratio)
 
             # Create pytorch dataset
-            self.train_dataset = TrainDataset(train_input, train_output, hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
+            # self.train_dataset = TrainDataset(train_input[:2], train_output[:2], hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
             # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
             # Load dev data
@@ -69,10 +71,26 @@ class TakekuchiDataset:
 
         self.speech_dim = self.speech_scaler.mean_.shape[0]
         self.motion_dim = self.motion_scaler.mean_.shape[0]
-            
+    
+    def train_dataset_generator(self, chunklen, seedlen, stride, max_num_samples):
+        num_samples = len(self.train_input)
+        if num_samples <= max_num_samples:
+            num_dataset = 1
+        else:
+            if num_samples % max_num_samples == 0:
+                num_dataset = num_samples // max_num_samples
+            else:
+                num_dataset = num_samples // max_num_samples + 1
+        for i in range(num_dataset):
+            print(i)
+            inputs = self.train_input[i*max_num_samples:(i+1)*max_num_samples]
+            outputs = self.train_output[i*max_num_samples:(i+1)*max_num_samples]
+            print(len(inputs), len(outputs))
+            yield TrainDataset(inputs, outputs, chunklen, seedlen, stride=stride)
 
     def get_train_dataset(self):
-        return self.train_dataset
+        return self.train_dataset_generator(self.chunklen, self.seedlen, stride=1, max_num_samples=50)
+        # return self.train_dataset
 
     def get_dev_dataset(self):
         return self.dev_dataset

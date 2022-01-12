@@ -36,7 +36,7 @@ if __name__ == "__main__":
                                  .replace(":", "")\
                                  .replace(" ", "_")
     log_dir = os.path.join(hparams.Dir.log, "log_" + date)
-    # print("log_dir:" + str(log_dir))
+    print("log_dir:" + str(log_dir))
     
     is_training = hparams.Infer.pre_trained == ""
 
@@ -64,7 +64,10 @@ if __name__ == "__main__":
         # ---------------------
 
         # Generate result on test set
-        output_list, motion_list = exp.generate_result_on_test_set(model, data)
+        os.makedirs('./log_dir/synthesized', exist_ok=True)
+        output_list, motion_list = exp.generate_result_on_test_set(model, data, '/log_dir/synthesized')
 
         # Evaluate KDE
         kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)
+        with open('./log_dir/kde_result', 'w') as f:
+            print(f"kde_mean: {kde_mean}\nkde_se: {kde_se}", file=f)

@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/prosody_flt",
+        "processed": "./data/takekuchi/processed/prosody",
         "log": "results"
     },
 
