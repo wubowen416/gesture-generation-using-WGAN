@@ -1,4 +1,5 @@
 import os
+from typing import Generator
 import numpy as np
 import torch
 from torch import autograd
@@ -9,6 +10,10 @@ from tqdm import tqdm
 from .generator import PoseGenerator
 from .discriminator import ConvDiscriminator
 from .kde_score import calculate_kde
+
+import wandb
+wandb.init(project='gesture_generation', name='prosody_text')
+wandb.define_metric('kde_rot', summary='max')
 
 torch.backends.cudnn.benchmark = True
 
@@ -66,126 +71,162 @@ class ConditionalWGAN:
         # cl
         cl_lambda = hparams.Train.cl_lambda
 
-        # Get dataloader
-        train_loader = DataLoader(
-            data.get_train_dataset(),
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=4)
-
         # Log relative
         writer = SummaryWriter(log_dir)
         n_iteration = 0
         gen_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
+
+        # train_loader = DataLoader(
+        #     data.get_train_dataset(),
+        #     batch_size=batch_size,
+        #     shuffle=True,
+        #     num_workers=4)
+
+        
         
         for epoch in range(n_epochs):
 
             print(f"Epoch {epoch}/{n_epochs}")
 
-            for idx_batch, (seed, cond, target) in tqdm(enumerate(train_loader), total=len(train_loader)):
+            train_dataset_generator = data.get_train_dataset()
+            
+            counter = 0
 
-                # to device
-                seed = seed.to(self.device)
-                cond = cond.to(self.device)
-                target = target.to(self.device)
+            for train_dataset in train_dataset_generator:
 
-                # Train discriminator
-                self.disc.train()
-                self.d_opt.zero_grad()
-                
-                latent = self.sample_noise(cond.shape[0], device=self.device)
-                with torch.no_grad():
-                    gen_outputs = self.gen(seed, latent, cond)
-                nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
+                print(counter)
+                counter += 1
 
-                # --------------------------------------------------------------------------------
-                # Compute gradient penalty
-                # Random weight term for interpolation between real and fake samples
-                alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
-                # Get random interpolation between real and fake samples
-                interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
-                d_interpolate = self.disc(interpolate, cond)
-                gradients = autograd.grad(
-                    outputs=d_interpolate,
-                    inputs=interpolate,
-                    grad_outputs=torch.ones_like(d_interpolate),
-                    create_graph=True,
-                    retain_graph=True,
-                    only_inputs=True,
-                )[0]
-                gradients = gradients.reshape(gradients.size(0), -1)
-                if gp_zero_center:
-                    # Zero-centered gradient penalty
-                    # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
-                    gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
-                else:
-                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                d_loss = nwd + gp_lambda * gradient_penalty
-                # --------------------------------------------------------------------------------
+                train_loader = DataLoader(
+                    train_dataset,
+                    batch_size=batch_size,
+                    shuffle=True,
+                    num_workers=1)
 
-                d_loss.backward()
-                self.d_opt.step()
+                for idx_batch, (seed, cond, target) in enumerate(train_loader):
+                    print("batch start")
+                    print("idx batch", idx_batch)
 
-                # Train generator
-                # if False:
-                if idx_batch % n_critic == 0:
-                    self.gen.train()
-                    self.g_opt.zero_grad()
+                    # to device
+                    seed = seed.to(self.device)
+                    cond = cond.to(self.device)
+                    target = target.to(self.device)
+
+                    # Train discriminator
+                    self.disc.train()
+                    self.d_opt.zero_grad()
 
                     latent = self.sample_noise(cond.shape[0], device=self.device)
-                    gen_outputs = self.gen(seed, latent, cond)
-
-                    # Loss
-                    critic = - self.disc(gen_outputs, cond).mean()
+                    with torch.no_grad():
+                        gen_outputs = self.gen(seed, latent, cond)
+                    nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
 
                     # --------------------------------------------------------------------------------
-                    # continuity loss
-                    pre_pose_error = F.smooth_l1_loss(
-                        gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
-                    pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
-                    pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                    g_loss = critic + cl_lambda * pre_pose_error
-                    # --------------------------------------------------------------------------------
+                    # Compute gradient penalty
+                    # Random weight term for interpolation between real and fake samples
+                    alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
+                    # Get random interpolation between real and fake samples
+                    interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
+                    d_interpolate = self.disc(interpolate, cond)
+                    gradients = autograd.grad(
+                        outputs=d_interpolate,
+                        inputs=interpolate,
+                        grad_outputs=torch.ones_like(d_interpolate),
+                        create_graph=True,
+                        retain_graph=True,
+                        only_inputs=True,
+                    )[0]
+                    # print("10")
+                    # gradients = gradients.reshape(gradients.size(0), -1)
+                    # print("11")
+                    # if gp_zero_center:
+                    #     # Zero-centered gradient penalty
+                    #     # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
+                    #     gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
+                    # else:
+                    #     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    # print("12")
+                    # d_loss = nwd + gp_lambda * gradient_penalty
+                    # # --------------------------------------------------------------------------------
 
-                    g_loss.backward()
-                    self.g_opt.step()
+                    # print("13")
+                    # d_loss.backward()
+                    # self.d_opt.step()
 
-                    w_distance = - nwd.item()
-                    # Estimated w-distance (opposite to disc loss)
-                    writer.add_scalar("loss/w-distance", w_distance, n_iteration)
-                    # Pre pose error
-                    writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), n_iteration)
-                    # generator loss (critic)
-                    writer.add_scalar("loss/gen-loss", critic.item(), n_iteration)
-                    # gradient penalty
-                    writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
+                    # # Train generator
+                    # # if False:
+                    # if idx_batch % n_critic == 0:
+                    #     print("14")
+                    #     self.gen.train()
+                    #     self.g_opt.zero_grad()
+                    #     print("15")
+                    #     latent = self.sample_noise(cond.shape[0], device=self.device)
+                    #     gen_outputs = self.gen(seed, latent, cond)
 
-                    # print("Estimated w-distance: {:.4f}".format(w_distance))
+                    #     # Loss
+                    #     print("16")
+                    #     critic = - self.disc(gen_outputs, cond).mean()
 
-                    # Log
-                    if gen_iteration > 0 and gen_iteration % log_gap == 0:
-                    # if True:
-                        print("generate samples")
-                        # Generate result on dev set
-                        output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
-                        # for i, output in enumerate(output_list):
-                        #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
-                        # Evaluate KDE
-                        output = torch.cat(output_list, dim=0).cpu().numpy()
-                        motion = torch.cat(motion_list, dim=0).cpu().numpy()
-                        output = data.motion_scaler.inverse_transform(output)
-                        motion = data.motion_scaler.inverse_transform(motion)
-                        kde_mean, _, kde_se = calculate_kde(output, motion)
-                        writer.add_scalar("kde/mean", kde_mean, n_iteration)
-                        writer.add_scalar("kde/se", kde_se, n_iteration)
-                        # Save model
-                        self.save(log_dir, n_iteration)
+                    #     # --------------------------------------------------------------------------------
+                    #     # continuity loss
+                    #     print("17")
+                    #     pre_pose_error = F.smooth_l1_loss(
+                    #         gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
+                    #     pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
+                    #     pre_pose_error = pre_pose_error.mean() # mean over batch samples
+                    #     g_loss = critic + cl_lambda * pre_pose_error
+                    #     # --------------------------------------------------------------------------------
+                    #     print("18")
+                    #     g_loss.backward()
+                    #     self.g_opt.step()
 
-                    gen_iteration += 1
+                    #     w_distance = - nwd.item()
+                    #     # Estimated w-distance (opposite to disc loss)
+                    #     writer.add_scalar("loss/w-distance", w_distance, n_iteration)
+                    #     # Pre pose error
+                    #     writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), n_iteration)
+                    #     # generator loss (critic)
+                    #     writer.add_scalar("loss/gen-loss", critic.item(), n_iteration)
+                    #     # gradient penalty
+                    #     writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
 
-                n_iteration += 1
+                    #     wandb.log({
+                    #         "w_distance": w_distance,
+                    #         "cl_loss": pre_pose_error.item(),
+                    #         "gp_loss": gradient_penalty.item(),
+                    #         "gen_loss": critic.item(),
+                    #     }, step=n_iteration)
+
+                    #     # print("Estimated w-distance: {:.4f}".format(w_distance))
+
+                    #     # Log
+                    #     if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                    #     # if True:
+                    #         print("generate samples")
+                    #         # Generate result on dev set
+                    #         output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                    #         # for i, output in enumerate(output_list):
+                    #         #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
+                    #         # Evaluate KDE
+                    #         output = torch.cat(output_list, dim=0).cpu().numpy()
+                    #         motion = torch.cat(motion_list, dim=0).cpu().numpy()
+                    #         output = data.motion_scaler.inverse_transform(output)
+                    #         motion = data.motion_scaler.inverse_transform(motion)
+                    #         kde_mean, _, kde_se = calculate_kde(output, motion)
+                    #         writer.add_scalar("kde/mean", kde_mean, n_iteration)
+                    #         writer.add_scalar("kde/se", kde_se, n_iteration)
+
+                    #         wandb.log({"kde_rot": w_distance}, step=n_iteration)
+
+                    #         # Save model
+                    #         self.save(log_dir, n_iteration)
+
+                    #     gen_iteration += 1
+
+                    # n_iteration += 1
+                    print("batch end")
 
     def save(self, log_dir, n_iteration):
         os.makedirs(os.path.join(log_dir, "chkpt"), exist_ok=True)

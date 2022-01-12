@@ -13,23 +13,31 @@ class TrainDataset(Dataset):
     def __init__(self, X, Y, chunklen, seedlen, stride=1):
 
         # make chunks
-        X_chunks = []
-        for x in X:
-            if x.shape[0] < chunklen:
-                continue
-            else:
-                chunk = chunkize(x, chunklen, stride)
-                X_chunks.extend(chunk)
-        self.X_chunks = np.array(X_chunks)
+        # X_chunks = []
+        # for x in X:
+        #     if x.shape[0] < chunklen:
+        #         continue
+        #     else:
+        #         chunk = chunkize(x, chunklen, stride)
+        #         X_chunks.extend(chunk)
+        # self.X_chunks = np.array(X_chunks)
 
-        Y_chunks = []
-        for y in Y:
-            if y.shape[0] < chunklen:
-                continue
-            else:
-                chunk = chunkize(y, chunklen, stride)
-                Y_chunks.extend(chunk)
-        self.Y_chunks = np.array(Y_chunks)
+        self.X_chunks = np.concatenate([chunkize(x, chunklen, stride) for x in X if x.shape[0] >= chunklen], axis=0)
+
+        # Y_chunks = []
+        # for y in Y:
+        #     if y.shape[0] < chunklen:
+        #         continue
+        #     else:
+        #         chunk = chunkize(y, chunklen, stride)
+        #         Y_chunks.extend(chunk)
+        # self.Y_chunks = np.array(Y_chunks)
+
+        self.Y_chunks = np.concatenate([chunkize(x, chunklen, stride) for x in Y if x.shape[0] >= chunklen], axis=0)
+
+        print(self.X_chunks.shape, self.Y_chunks.shape)
+
+        # assert 0
 
         self.chunklen = chunklen
         self.seedlen = seedlen

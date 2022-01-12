@@ -1,5 +1,4 @@
 import pandas as pd
-from python_speech_features.base import mfcc
 import tqdm
 import pickle
 import argparse
@@ -10,9 +9,10 @@ from sklearn.preprocessing import StandardScaler
 
 from bvh_to_rot import vectorize_bvh_to_rotation
 from audio_feature import semitone_prosody, calculate_mfcc
+from text_feature import frame_encoding
 
 
-FEATURE_TYPE = "prosody"
+FEATURE_TYPE = "prosody_text"
 
 
 def shorten(arr1, arr2):
@@ -23,17 +23,6 @@ def shorten(arr1, arr2):
 
 
 def create_vectors(audio_filename, gesture_filename):
-    """
-    Extract features from a given pair of audio and motion files
-    Args:
-        audio_filename:    file name for an audio file (.wav)
-        gesture_filename:  file name for a motion file (.bvh)
-        nodes:             an array of markers for the motion
-
-    Returns:
-        input_with_context   : speech features
-        output_with_context  : motion features
-    """
 
     # Step 1: speech features
     if FEATURE_TYPE == "prosody":
@@ -45,7 +34,15 @@ def create_vectors(audio_filename, gesture_filename):
         mfcc_vectors = calculate_mfcc(audio_filename)
         prosody_vectors, mfcc_vectors = shorten(prosody_vectors, mfcc_vectors)
         input_vectors = np.concatenate([prosody_vectors, mfcc_vectors], axis=-1)
-        
+    elif FEATURE_TYPE == "prosody_text":
+        prosody_vectors = semitone_prosody(audio_filename)
+        text_vectors = frame_encoding(audio_filename)
+        if text_vectors is None:
+            return None, None
+        if text_vectors.shape[0] < prosody_vectors.shape[0]:
+            text_vectors = np.concatenate([np.zeros((prosody_vectors.shape[0] - text_vectors.shape[0], text_vectors.shape[-1])), text_vectors], axis=0)
+        prosody_vectors, text_vectors = shorten(prosody_vectors, text_vectors)
+        input_vectors = np.concatenate([prosody_vectors, text_vectors], axis=-1)
 
     # Step 2: Vectorize BVH
     output_vectors = vectorize_bvh_to_rotation(gesture_filename)
@@ -53,6 +50,7 @@ def create_vectors(audio_filename, gesture_filename):
     # Check
     # print(input_vectors.shape)
     # print(output_vectors.shape)
+    # assert 0
 
     # Step 3: Align vector length
     input_vectors, output_vectors = shorten(input_vectors, output_vectors)
@@ -69,6 +67,10 @@ def create(name, dataset_dir, data_dir):
 
     for i in tqdm.tqdm(range(len(df))):
         input_vectors, output_vectors = create_vectors(df['wav_filename'][i], df['bvh_filename'][i])
+
+        if input_vectors is None:
+            print(f"{df['wav_filename'][i]} processing failed. Skip")
+            continue
 
         X.append(input_vectors.astype(float))
         Y.append(output_vectors.astype(float))
