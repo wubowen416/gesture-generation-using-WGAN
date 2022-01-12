@@ -82,14 +82,12 @@ class TakekuchiDataset:
             else:
                 num_dataset = num_samples // max_num_samples + 1
         for i in range(num_dataset):
-            print(i)
             inputs = self.train_input[i*max_num_samples:(i+1)*max_num_samples]
             outputs = self.train_output[i*max_num_samples:(i+1)*max_num_samples]
-            print(len(inputs), len(outputs))
             yield TrainDataset(inputs, outputs, chunklen, seedlen, stride=stride)
 
     def get_train_dataset(self):
-        return self.train_dataset_generator(self.chunklen, self.seedlen, stride=1, max_num_samples=50)
+        return self.train_dataset_generator(self.chunklen, self.seedlen, stride=1, max_num_samples=250)
         # return self.train_dataset
 
     def get_dev_dataset(self):

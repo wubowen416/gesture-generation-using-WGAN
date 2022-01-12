@@ -97,7 +97,7 @@ def parse_arg():
     #                     help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
     parser.add_argument('--dataset-dir', default='./data/takekuchi/source/split',
                         help="Specify dataset dir (containing gg-train, gg-dev, gg-test)")
-    parser.add_argument('--data-dir', default=f'./data/takekuchi/processed/{FEATURE_TYPE}_flt', # flt represents filtered
+    parser.add_argument('--data-dir', default=f'./data/takekuchi/processed/{FEATURE_TYPE}',
                         help="Specify processed data save dir")
     return parser.parse_args()
 

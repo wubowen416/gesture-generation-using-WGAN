@@ -33,11 +33,14 @@
         "n_epochs": 150,
         "batch_size": 128,
         "n_critic": 10,
+        "lr": 1e-4,
+        "use_vel": false,
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
-        "log_gap": 750
+        "log_gap": 1500
     },
 
-    "device": "cuda"
+    "device": "cuda",
+    "seed": 1
 }

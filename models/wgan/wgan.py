@@ -1,9 +1,4 @@
 import os
-<<<<<<< HEAD
-from unicodedata import name
-=======
-from typing import Generator
->>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
 import numpy as np
 import torch
 from torch import autograd
@@ -12,7 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from .generator import PoseGenerator
 from .discriminator import ConvDiscriminator
-from .kde_score import calculate_kde_batch
+from .kde_score import calculate_kde, calculate_kde_batch
 from .utils import compute_derivative, compute_velocity
 import wandb
 
@@ -20,14 +15,11 @@ import sys
 sys.path.append('.')
 from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
-<<<<<<< HEAD
-=======
 import wandb
 wandb.init(project='gesture_generation', name='prosody_text')
 wandb.define_metric('kde_rot', summary='max')
 
 torch.backends.cudnn.benchmark = True
->>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
 
 class ConditionalWGAN:
 
@@ -96,13 +88,14 @@ class ConditionalWGAN:
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
 
+        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=lr)
+        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=lr)
+
         # train_loader = DataLoader(
         #     data.get_train_dataset(),
         #     batch_size=batch_size,
         #     shuffle=True,
         #     num_workers=4)
-
-        
         
         for epoch in range(n_epochs):
 
@@ -110,22 +103,16 @@ class ConditionalWGAN:
 
             train_dataset_generator = data.get_train_dataset()
             
-            counter = 0
-
             for train_dataset in train_dataset_generator:
-
-                print(counter)
-                counter += 1
 
                 train_loader = DataLoader(
                     train_dataset,
                     batch_size=batch_size,
                     shuffle=True,
-                    num_workers=1)
+                    num_workers=4
+                )
 
-                for idx_batch, (seed, cond, target) in enumerate(train_loader):
-                    print("batch start")
-                    print("idx batch", idx_batch)
+                for idx_batch, (seed, cond, target) in tqdm(enumerate(train_loader), total=len(train_loader), ascii=True):
 
                     # to device
                     seed = seed.to(self.device)
@@ -156,97 +143,73 @@ class ConditionalWGAN:
                         retain_graph=True,
                         only_inputs=True,
                     )[0]
-                    # print("10")
-                    # gradients = gradients.reshape(gradients.size(0), -1)
-                    # print("11")
-                    # if gp_zero_center:
-                    #     # Zero-centered gradient penalty
-                    #     # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
-                    #     gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
-                    # else:
-                    #     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                    # print("12")
-                    # d_loss = nwd + gp_lambda * gradient_penalty
-                    # # --------------------------------------------------------------------------------
+                    gradients = gradients.reshape(gradients.size(0), -1)
+                    if gp_zero_center:
+                        # Zero-centered gradient penalty
+                        # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
+                        gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
+                    else:
+                        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    d_loss = nwd + gp_lambda * gradient_penalty
+                    # --------------------------------------------------------------------------------
 
-                    # print("13")
-                    # d_loss.backward()
-                    # self.d_opt.step()
+                    d_loss.backward()
+                    self.d_opt.step()
 
-                    # # Train generator
-                    # # if False:
-                    # if idx_batch % n_critic == 0:
-                    #     print("14")
-                    #     self.gen.train()
-                    #     self.g_opt.zero_grad()
-                    #     print("15")
-                    #     latent = self.sample_noise(cond.shape[0], device=self.device)
-                    #     gen_outputs = self.gen(seed, latent, cond)
+                    # Train generator
+                    # if False:
+                    if idx_batch % n_critic == 0:
+                        self.gen.train()
+                        self.g_opt.zero_grad()
+                        latent = self.sample_noise(cond.shape[0], device=self.device)
+                        gen_outputs = self.gen(seed, latent, cond)
 
-                    #     # Loss
-                    #     print("16")
-                    #     critic = - self.disc(gen_outputs, cond).mean()
+                        # Loss
+                        critic = - self.disc(gen_outputs, cond).mean()
 
-                    #     # --------------------------------------------------------------------------------
-                    #     # continuity loss
-                    #     print("17")
-                    #     pre_pose_error = F.smooth_l1_loss(
-                    #         gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
-                    #     pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
-                    #     pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                    #     g_loss = critic + cl_lambda * pre_pose_error
-                    #     # --------------------------------------------------------------------------------
-                    #     print("18")
-                    #     g_loss.backward()
-                    #     self.g_opt.step()
+                        # --------------------------------------------------------------------------------
+                        # continuity loss
+                        pre_pose_error = F.smooth_l1_loss(
+                            gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
+                        pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
+                        pre_pose_error = pre_pose_error.mean() # mean over batch samples
+                        g_loss = critic + cl_lambda * pre_pose_error
+                        # --------------------------------------------------------------------------------
+                        g_loss.backward()
+                        self.g_opt.step()
 
-                    #     w_distance = - nwd.item()
-                    #     # Estimated w-distance (opposite to disc loss)
-                    #     writer.add_scalar("loss/w-distance", w_distance, n_iteration)
-                    #     # Pre pose error
-                    #     writer.add_scalar("loss/pre-pose-error", pre_pose_error.item(), n_iteration)
-                    #     # generator loss (critic)
-                    #     writer.add_scalar("loss/gen-loss", critic.item(), n_iteration)
-                    #     # gradient penalty
-                    #     writer.add_scalar("loss/gradient-penalty", gradient_penalty.item(), n_iteration)
+                        wandb.log({
+                            "w_distance": - nwd.item(),
+                            "cl_loss": pre_pose_error.item(),
+                            "gp_loss": gradient_penalty.item(),
+                            "gen_loss": critic.item(),
+                        }, step=n_iteration)
 
-                    #     wandb.log({
-                    #         "w_distance": w_distance,
-                    #         "cl_loss": pre_pose_error.item(),
-                    #         "gp_loss": gradient_penalty.item(),
-                    #         "gen_loss": critic.item(),
-                    #     }, step=n_iteration)
+                        # print("Estimated w-distance: {:.4f}".format(w_distance))
 
-                    #     # print("Estimated w-distance: {:.4f}".format(w_distance))
+                        # Log
+                        if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                        # if True:
+                            print("generate samples")
+                            # Generate result on dev set
+                            output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                            # for i, output in enumerate(output_list):
+                            #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
+                            # Evaluate KDE
+                            output = torch.cat(output_list, dim=0).cpu().numpy()
+                            motion = torch.cat(motion_list, dim=0).cpu().numpy()
+                            output = data.motion_scaler.inverse_transform(output)
+                            motion = data.motion_scaler.inverse_transform(motion)
+                            kde_mean, _, kde_se = calculate_kde(output, motion)
 
-                    #     # Log
-                    #     if gen_iteration > 0 and gen_iteration % log_gap == 0:
-                    #     # if True:
-                    #         print("generate samples")
-                    #         # Generate result on dev set
-                    #         output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
-                    #         # for i, output in enumerate(output_list):
-                    #         #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
-                    #         # Evaluate KDE
-                    #         output = torch.cat(output_list, dim=0).cpu().numpy()
-                    #         motion = torch.cat(motion_list, dim=0).cpu().numpy()
-                    #         output = data.motion_scaler.inverse_transform(output)
-                    #         motion = data.motion_scaler.inverse_transform(motion)
-                    #         kde_mean, _, kde_se = calculate_kde(output, motion)
-                    #         writer.add_scalar("kde/mean", kde_mean, n_iteration)
-                    #         writer.add_scalar("kde/se", kde_se, n_iteration)
+                            wandb.log({'kde_rot': kde_mean, 'kde_se': kde_se}, step=n_iteration)
 
-                    #         wandb.log({"kde_rot": w_distance}, step=n_iteration)
+                            # Save model
+                            self.save(log_dir, n_iteration)
 
-                    #         # Save model
-                    #         self.save(log_dir, n_iteration)
+                        gen_iteration += 1
 
-                    #     gen_iteration += 1
-
-                    # n_iteration += 1
-                    print("batch end")
-
-        wandb.finish()
+                    n_iteration += 1
 
     def save(self, log_dir, n_iteration):
         os.makedirs(os.path.join(log_dir, "chkpt"), exist_ok=True)
@@ -256,21 +219,6 @@ class ConditionalWGAN:
     def load(self, chkpt_path):
         self.gen.load_state_dict(torch.load(chkpt_path, map_location=self.device))
     
-<<<<<<< HEAD
-    def synthesize_batch(self, batch_data, numpy=False):
-        output_list, motion_list = [], []
-        for i, (speech, motion) in enumerate(batch_data):
-            if len(motion) < self.chunklen:
-                continue
-            output = self.synthesize_sequence(speech)
-            if numpy:
-                output_list.append(output.cpu().numpy())
-                motion_list.append(motion.cpu().numpy())
-            else:
-                output_list.append(output)
-                motion_list.append(motion)
-        return output_list, motion_list
-=======
     def synthesize_batch(self, batch_data):
         output_list, motion_list, output_chunk_list = [], [], []
         for i, (speech, motion) in enumerate(batch_data):
@@ -281,8 +229,6 @@ class ConditionalWGAN:
             output_chunk_list.append(output_chunks)
             motion_list.append(motion)
         return output_list, output_chunk_list, motion_list
->>>>>>> a7bff98f56a56162ab65d62cc336985c0ba4f666
-
     
     def synthesize_sequence(self, speech_chunks):
         '''Take speech as input (N, chunklen, dim) as numpy array, assuming scaled and chunkized'''
@@ -314,7 +260,6 @@ class ConditionalWGAN:
             else: # last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
         return motion, torch.cat(motion_chunks, dim=0)
-
 
     def sample_noise(self, batch_size, device, mean=0, std=1):
         return torch.normal(mean=mean, std=std, size=(batch_size, self.noise_dim), device=device)
