@@ -14,8 +14,8 @@ from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
 import numpy as np
 import torch
-np.random.seed(1)
-torch.manual_seed(1)
+# np.random.seed(1)
+# torch.manual_seed(1)
 
 
 def send_motion(motion, commu_client):
@@ -26,10 +26,9 @@ def send_motion(motion, commu_client):
     # Make Commu command
     command = F.CommuCommand(rotation_data)
     command.to_csv('t.txt')
-    # send_command = command.to_command()
+    send_command = command.to_command()
     # send motion via tcp/ip
-    # commu_client.sendall(send_command)
-
+    commu_client.sendall(send_command)
     return position
 
 
@@ -118,6 +117,9 @@ if __name__ == "__main__":
                     else:
                         output_motion, _ = F.generate(model, seed, cond, data, interpolate=True)
                         motion = output_motion
+
+                    if i == 0:
+                        input("Press Enter to continue...")
                         
                     position = send_motion(motion, commu_client)
                     positions.append(position)

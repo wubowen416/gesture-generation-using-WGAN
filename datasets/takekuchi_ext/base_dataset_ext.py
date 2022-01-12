@@ -85,7 +85,7 @@ def kmeans_clustering(position_data, category, k):
     category_list = list(category.to_dict().keys())
     enc = OneHotEncoder(categories=[category_list], sparse=False)
     onehot_lables = enc.fit_transform(category_labels)
-    return onehot_lables
+    return onehot_lables, enc
 
 
 class TrainDataset(Dataset):
@@ -123,7 +123,7 @@ class TrainDataset(Dataset):
         pos_chunks = np.array(pos_chunks)
 
         # K-means clustering
-        category_labels = kmeans_clustering(pos_chunks, category, k=k) # (N, n_classes)
+        category_labels, self.category_encoder = kmeans_clustering(pos_chunks, category, k=k) # (N, n_classes)
         category_vectors = np.repeat(category_labels[:, np.newaxis, :], chunklen, axis=1)
 
         # Concate to speech features
@@ -134,6 +134,9 @@ class TrainDataset(Dataset):
         self.chunklen = chunklen
         self.seedlen = seedlen
         self.k = k
+
+    def get_category_encoder(self):
+        return self.category_encoder
 
     def __len__(self):
         return len(self.X_chunks)

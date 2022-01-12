@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from io import StringIO
 from tools.takekuchi_dataset_tool.functions import chunkize
+from sklearn.preprocessing import StandardScaler
 
 
 def prepend_line(file_name, line):
@@ -55,8 +56,21 @@ def data_preprocess(lines, data, hparams):
     pitch = pitch[:min_size]
     speech_feature = np.stack((power, pitch)).T
     # Scale & chunkize
-    scaled_speech_feature = data.speech_scaler.transform(speech_feature)
-    return chunkize(scaled_speech_feature, chunklen=hparams.Data.chunklen, stride=hparams.Data.chunklen-hparams.Data.seedlen)
+    # scaled_speech_feature = data.speech_scaler.transform(speech_feature)
+    scaled_speech_feature = StandardScaler().fit_transform(speech_feature)
+    chunks = chunkize(scaled_speech_feature, chunklen=hparams.Data.chunklen, stride=hparams.Data.chunklen-hparams.Data.seedlen)
+
+    if 'extraversion' in hparams.Infer:
+        label = np.array(data.encode_category([[hparams.Infer.extraversion]]))
+        print(label.shape)
+        category_vectors = np.repeat(label[np.newaxis, :, :], chunks.shape[0], axis=0)
+        category_vectors = np.repeat(category_vectors, chunks.shape[1], axis=1)
+        # Concate to speech features
+        chunks = np.concatenate([chunks, category_vectors], axis=-1)
+    
+    return chunks
+
+    
 
 def prepare_generation(model, speech_chunks):
     model.gen.eval()
@@ -85,12 +99,14 @@ def calculate_rotation_for_shouder(position):
     # Swap z, x, y to x, y, z
     position[:, :, [0, 1, 2]] = position[:, :, [2, 0, 1]]
 
+    fixer = 10 # Extend shoulder outside to smaller angle, because commu seems opening shoulder too wide
+
     # Left
     shoulder_index = 6
     hand_index = 8
     shoulder_position = position[:, shoulder_index, :]
 
-    shoulder_position[:, 1] += 5
+    shoulder_position[:, 1] += fixer
 
     hand_position = position[:, hand_index, :]
     direction_vector = normalize(hand_position - shoulder_position)
@@ -131,7 +147,7 @@ def calculate_rotation_for_shouder(position):
     hand_index = 11
     shoulder_position = position[:, shoulder_index, :]
 
-    shoulder_position[:, 1] -= 5
+    shoulder_position[:, 1] -= fixer
 
     hand_position = position[:, hand_index, :]
     direction_vector = normalize(hand_position - shoulder_position)

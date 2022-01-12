@@ -76,6 +76,7 @@ class Takekuchi_extDataset:
         # Load scalers
         self.speech_scaler = jl.load(os.path.join(data_dir, 'speech_scaler.jl'))
         self.motion_scaler = jl.load(os.path.join(data_dir, 'motion_scaler.jl'))
+        
 
         # N of categories
         k = len(hparams.Data.extraversion.to_dict().keys())
@@ -101,6 +102,10 @@ class Takekuchi_extDataset:
             self.train_dataset = TrainDataset(train_input, train_output, train_position, hparams.Data.chunklen, hparams.Data.seedlen, hparams.Data.extraversion, stride=1, k=k)
             # self.val_dataset = TrainDataset(val_input, val_output,  hparams.Data.chunklen, hparams.Data.seedlen, stride=1)
 
+            category_encoder = self.train_dataset.get_category_encoder()
+
+            jl.dump(category_encoder, os.path.join(data_dir, 'category_encoder.jl'))
+
             # Load dev data
             with open(os.path.join(data_dir, "X_dev.p"), 'rb') as f:
                 dev_input = pickle.load(f)
@@ -113,6 +118,7 @@ class Takekuchi_extDataset:
             self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen, k=k)
 
         else:
+            self.category_encoder = jl.load(os.path.join(data_dir, 'category_encoder.jl'))
             # Load test data
             with open(os.path.join(data_dir, "X_dev.p"), 'rb') as f:
                 test_input = pickle.load(f)
@@ -144,6 +150,9 @@ class Takekuchi_extDataset:
 
     def get_scaler(self):
         return self.speech_scaler, self.motion_scaler
+
+    def encode_category(self, cate):
+        return self.category_encoder.transform(cate)
 
     def save_result(self, data, save_path):
         self.save_unity_result(data, save_path + '.txt')

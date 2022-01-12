@@ -20,7 +20,7 @@ tcp_server.bind((config.Data.server_ip, config.Data.port))
 tcp_server.listen(listen_num)
 
 # load data
-with open('./tools/commu/sample_data/audio1109-rms.txt') as f:
+with open('./tools/commu/sample_data/20210317-095527-729-rms.txt') as f:
     lines = f.readlines()
 
 # 4.ループして接続を待ち続ける
