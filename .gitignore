@@ -3,5 +3,6 @@ results
 synthesized
 analysis
 wandb
+test_motion
 
 __pycache__

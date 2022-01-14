@@ -109,7 +109,7 @@ class TakekuchiDataset:
         self.save_unity_result(data, save_path)
 
     def save_unity_result(self, data, save_path):
-        os.makedirs(os.path.dirname(save_path), exist_ok=True) 
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         # rescale
         data = self.motion_scaler.inverse_transform(data)
         # Unitize

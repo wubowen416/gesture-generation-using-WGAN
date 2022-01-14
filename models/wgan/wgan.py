@@ -220,15 +220,16 @@ class ConditionalWGAN:
         self.gen.load_state_dict(torch.load(chkpt_path, map_location=self.device))
     
     def synthesize_batch(self, batch_data):
-        output_list, motion_list, output_chunk_list = [], [], []
+        output_list, motion_list, output_chunk_list, indexs = [], [], [], []
         for i, (speech, motion) in enumerate(batch_data):
             if len(motion) < self.chunklen:
                 continue
+            indexs.append(i)
             output, output_chunks = self.synthesize_sequence(speech)
             output_list.append(output)
             output_chunk_list.append(output_chunks)
             motion_list.append(motion)
-        return output_list, output_chunk_list, motion_list
+        return output_list, output_chunk_list, motion_list, indexs
     
     def synthesize_sequence(self, speech_chunks):
         '''Take speech as input (N, chunklen, dim) as numpy array, assuming scaled and chunkized'''
