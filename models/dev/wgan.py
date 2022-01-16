@@ -6,69 +6,73 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from .generator import PoseGenerator
-from .discriminator import ConvDiscriminator
+from .discriminator import ConvDiscriminator, ConditionalConvDiscriminator
 from .kde_score import calculate_kde, calculate_kde_batch
 from .utils import compute_derivative, compute_velocity
 import wandb
 
-import sys
-sys.path.append('.')
 from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
 import wandb
 
-
 torch.backends.cudnn.benchmark = True
 
-class ConditionalWGAN:
+class MultiDConditionalWGAN:
 
-    def __init__(self, cond_dim, output_dim, hparams):
+    def __init__(self, d_cond, d_data, hparams):
 
         # Model relative
-        self.cond_dim = cond_dim
-        self.noise_dim = hparams.Model.Generator.noise_dim
-        self.output_dim = output_dim
-        self.chunklen = hparams.Data.chunklen
-        self.seedlen = hparams.Data.seedlen
-        # Generator
-        self.gen_hidden = hparams.Model.Generator.hidden
-        self.gen_layers = hparams.Model.Generator.num_layers
-        self.gen_layernorm = hparams.Model.Generator.layernorm
-        self.gen_dropout = hparams.Model.Generator.dropout
-        # Discriminator
-        self.disc_hidden = hparams.Model.Discriminator.hidden
-        self.disc_batchnorm = hparams.Model.Discriminator.batchnorm
-        self.disc_layernorm = hparams.Model.Discriminator.layernorm
+        self.d_cond = d_cond
+        self.d_data = d_data
+        self.chunk_len = hparams.Data.chunklen
+        self.seed_len = hparams.Data.seedlen
 
-        self.use_vel = False
-        self.disc_input_dim = output_dim
-        if "use_vel" in hparams.Train:
-            if hparams.Train.use_vel:
-                self.use_vel = True
-                self.disc_input_dim = 2 * output_dim
+        # Generator
+        self.gen_config = hparams.Model.Generator
+        # Conditional Discriminator
+        self.cond_disc_config = hparams.Model.CondDiscriminator
+        # Pose Discriminator
+        self.pose_disc_config = hparams.Model.PoseDiscriminator
 
         # Device
         self.device = hparams.device
 
+        # Log
+        self.run_name = hparams.run_name
     
     def build(self, chkpt_path=None):
-        self.gen = PoseGenerator(audio_feature_size=self.cond_dim, noise_size=self.noise_dim, dir_size=self.output_dim, n_poses=self.chunklen, hidden_size=self.gen_hidden, num_layers=self.gen_layers, dropout=self.gen_dropout, layernorm=self.gen_layernorm)
-        self.disc = ConvDiscriminator(audio_feature_size=self.cond_dim, n_poses=self.chunklen, dir_size=self.disc_input_dim, hidden_size=self.disc_hidden, batchnorm=self.disc_batchnorm, layernorm=self.disc_layernorm, sa=False)
+
+        self.gen = PoseGenerator(
+            d_cond=self.d_cond,
+            d_data=self.d_data,
+            chunk_len=self.chunk_len,
+            **self.gen_config.to_dict()
+        )
+
+        self.cond_disc = ConditionalConvDiscriminator(
+            d_cond=self.d_cond,
+            d_data=self.d_data,
+            **self.cond_disc_config.to_dict()
+        )
+
+        self.pose_disc = ConvDiscriminator(
+            d_data=self.d_data,
+            **self.pose_disc_config.to_dict()
+        )
+
         self.gen.to(self.device)
-        self.disc.to(self.device)
+        self.cond_disc.to(self.device)
+        self.pose_disc.to(self.device)
+
         if chkpt_path:
             # Load chkpt
             self.load(chkpt_path)
             self.gen.eval()
         else:
-            # Train
-            self.gen.train()
-            self.disc.train()
             wandb.init(project='gesture_generation', name=self.run_name)
             wandb.define_metric('kde_rot', summary='max')
 
-        print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
-        
+        print(f"Num of params: gen - {self.gen.count_parameters()}, cond_disc - {self.cond_disc.count_parameters()}, pose_disc - {self.pose_disc.count_parameters()}")
 
     def train(self, data, log_dir, hparams):
 
@@ -79,7 +83,6 @@ class ConditionalWGAN:
         lr = hparams.Train.lr
         # gp
         gp_lambda = hparams.Train.gp_lambda
-        gp_zero_center = hparams.Train.gp_zero_center
         # cl
         cl_lambda = hparams.Train.cl_lambda
 
@@ -90,17 +93,12 @@ class ConditionalWGAN:
         hparams.dump(log_dir)
 
         self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=lr)
-        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=lr)
-
-        # train_loader = DataLoader(
-        #     data.get_train_dataset(),
-        #     batch_size=batch_size,
-        #     shuffle=True,
-        #     num_workers=4)
+        self.cond_d_opt = torch.optim.Adam(self.cond_disc.parameters(), lr=lr)
+        self.pose_d_opt = torch.optim.Adam(self.pose_disc.parameters(), lr=lr)
         
         for epoch in range(n_epochs):
 
-            print(f"Epoch {epoch}/{n_epochs}")
+            print(f"Epoch {epoch + 1}/{n_epochs}")
 
             train_dataset_generator = data.get_train_dataset()
             
@@ -120,22 +118,21 @@ class ConditionalWGAN:
                     cond = cond.to(self.device)
                     target = target.to(self.device)
 
-                    # Train discriminator
-                    self.disc.train()
-                    self.d_opt.zero_grad()
+                    # Train cond discriminator
+                    self.gen.eval()
+                    self.cond_disc.train()
+                    self.cond_disc.zero_grad()
 
-                    latent = self.sample_noise(cond.shape[0], device=self.device)
-                    with torch.no_grad():
-                        gen_outputs = self.gen(seed, latent, cond)
-                    nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
-
+                    gen_outputs = self.gen(cond, seed).detach()
+                    nwd = - self.cond_disc(target, cond).mean() + self.cond_disc(gen_outputs, cond).mean()
+                    cond_nwd = nwd.item()
                     # --------------------------------------------------------------------------------
                     # Compute gradient penalty
                     # Random weight term for interpolation between real and fake samples
                     alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
                     # Get random interpolation between real and fake samples
                     interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
-                    d_interpolate = self.disc(interpolate, cond)
+                    d_interpolate = self.cond_disc(interpolate, cond)
                     gradients = autograd.grad(
                         outputs=d_interpolate,
                         inputs=interpolate,
@@ -145,48 +142,72 @@ class ConditionalWGAN:
                         only_inputs=True,
                     )[0]
                     gradients = gradients.reshape(gradients.size(0), -1)
-                    if gp_zero_center:
-                        # Zero-centered gradient penalty
-                        # Improving Generalization and stability of GAN, Thanh-Tung+ 2019, ICLR
-                        gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
-                    else:
-                        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
                     d_loss = nwd + gp_lambda * gradient_penalty
                     # --------------------------------------------------------------------------------
-
+                    # Update 
                     d_loss.backward()
-                    self.d_opt.step()
+                    self.cond_d_opt.step()
+
+                    # Train pose disc
+                    self.pose_disc.train()
+                    self.pose_disc.zero_grad()
+                    nwd = - self.pose_disc(target).mean() + self.pose_disc(gen_outputs).mean()
+                    pose_nwd = nwd.item()
+                    # --------------------------------------------------------------------------------
+                    # Compute gradient penalty
+                    # Random weight term for interpolation between real and fake samples
+                    alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
+                    # Get random interpolation between real and fake samples
+                    interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
+                    d_interpolate = self.pose_disc(interpolate)
+                    gradients = autograd.grad(
+                        outputs=d_interpolate,
+                        inputs=interpolate,
+                        grad_outputs=torch.ones_like(d_interpolate),
+                        create_graph=True,
+                        retain_graph=True,
+                        only_inputs=True,
+                    )[0]
+                    gradients = gradients.reshape(gradients.size(0), -1)
+                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    d_loss = nwd + gp_lambda * gradient_penalty
+                    # --------------------------------------------------------------------------------
+                    d_loss.backward()
+                    self.pose_d_opt.step()
 
                     # Train generator
                     # if False:
                     if idx_batch % n_critic == 0:
                         self.gen.train()
+                        self.cond_disc.eval()
+                        self.pose_disc.eval()
+
                         self.g_opt.zero_grad()
-                        latent = self.sample_noise(cond.shape[0], device=self.device)
-                        gen_outputs = self.gen(seed, latent, cond)
+                        gen_outputs = self.gen(cond ,seed)
 
                         # Loss
-                        critic = - self.disc(gen_outputs, cond).mean()
+                        cond_critic = - self.cond_disc(gen_outputs, cond).mean()
+                        pose_critic = - self.pose_disc(gen_outputs).mean()
 
                         # --------------------------------------------------------------------------------
                         # continuity loss
                         pre_pose_error = F.smooth_l1_loss(
-                            gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
+                            gen_outputs[:, :self.seed_len], seed[:, :self.seed_len], reduction='none')
                         pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
                         pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                        g_loss = critic + cl_lambda * pre_pose_error
+                        g_loss = .5 * (cond_critic + pose_critic) + cl_lambda * pre_pose_error
                         # --------------------------------------------------------------------------------
                         g_loss.backward()
                         self.g_opt.step()
 
                         wandb.log({
-                            "w_distance": - nwd.item(),
+                            "cond_w_distance": - cond_nwd,
+                            "pose_w_distance": - pose_nwd,
                             "cl_loss": pre_pose_error.item(),
                             "gp_loss": gradient_penalty.item(),
-                            "gen_loss": critic.item(),
+                            "gen_loss": (cond_critic + pose_critic).item(),
                         }, step=n_iteration)
-
-                        # print("Estimated w-distance: {:.4f}".format(w_distance))
 
                         # Log
                         if gen_iteration > 0 and gen_iteration % log_gap == 0:
@@ -262,6 +283,3 @@ class ConditionalWGAN:
             else: # last chunk
                 motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
         return motion, torch.cat(motion_chunks, dim=0)
-
-    def sample_noise(self, batch_size, device, mean=0, std=1):
-        return torch.normal(mean=mean, std=std, size=(batch_size, self.noise_dim), device=device)
