@@ -60,13 +60,11 @@ class TakekuchiDataset:
 
             test_input = list(map(self.speech_scaler.transform, test_input))
             test_output = list(map(lowpass_filter, test_output))
-            # Save test output motion to unity format
-            if not os.path.exists("./test_motion"):
-                os.makedirs("./test_motion")
-                for i, motion in enumerate(test_output):
-                    self.save_result(motion, f"./test_motion/motion_{i}.txt")
-
             test_output = list(map(self.motion_scaler.transform, test_output))
+            # Save test output motion to unity format
+            os.makedirs('./test_motion', exist_ok=True)
+            for i, motion in enumerate(test_output):
+                self.save_unity_result(motion, f"./test_motion/motion_{i}.txt")
             self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
         self.speech_dim = self.speech_scaler.mean_.shape[0]
@@ -104,9 +102,6 @@ class TakekuchiDataset:
 
     def get_scaler(self):
         return self.speech_scaler, self.motion_scaler
-
-    def save_result(self, data, save_path):
-        self.save_unity_result(data, save_path)
 
     def save_unity_result(self, data, save_path):
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
