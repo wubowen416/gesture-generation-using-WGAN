@@ -186,7 +186,7 @@ class MultiDConditionalWGAN:
                         self.pose_disc.eval()
 
                         self.g_opt.zero_grad()
-                        gen_outputs = self.gen(cond ,seed)
+                        gen_outputs = self.gen(cond, seed)
 
                         # Loss
                         cond_critic = - self.cond_disc(gen_outputs, cond).mean()
@@ -213,11 +213,11 @@ class MultiDConditionalWGAN:
                         }, step=n_iteration)
 
                         # Log
-                        if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                        if gen_iteration % log_gap == 0:
                         # if True:
                             print("generate samples")
                             # Generate result on dev set
-                            output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
+                            output_list, _, motion_list, _ = self.synthesize_batch(data.get_dev_dataset())
                             # for i, output in enumerate(output_list):
                             #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
                             # Evaluate KDE
@@ -247,7 +247,7 @@ class MultiDConditionalWGAN:
     def synthesize_batch(self, batch_data):
         output_list, motion_list, output_chunk_list, indexs = [], [], [], []
         for i, (speech, motion) in enumerate(batch_data):
-            if len(motion) < self.chunklen:
+            if len(motion) < self.chunk_len:
                 continue
             indexs.append(i)
             output, output_chunks = self.synthesize_sequence(speech)
@@ -257,32 +257,31 @@ class MultiDConditionalWGAN:
         return output_list, output_chunk_list, motion_list, indexs
     
     def synthesize_sequence(self, speech_chunks):
-        '''Take speech as input (N, chunklen, dim) as numpy array, assuming scaled and chunkized'''
+        '''Take speech as input (N, chunk_len, dim) as numpy array, assuming scaled and chunkized'''
         self.gen.eval()
         # Generate iteratively
         motion_chunks = []
-        seed = torch.zeros(size=(1, self.chunklen, self.output_dim)).to(self.device)
+        seed = torch.zeros(size=(1, self.chunk_len, self.d_data)).to(self.device)
         for cond in speech_chunks.to(self.device):
             cond = cond.unsqueeze(0)
-            latent = self.sample_noise(1, device=self.device)
             with torch.no_grad():
-                output = self.gen(seed, latent, cond).squeeze(0)
-            seed[:, :self.seedlen] = output[-self.seedlen:]
+                output = self.gen(cond, seed).squeeze(0)
+            seed[:, :self.seed_len] = output[-self.seed_len:]
             motion_chunks.append(output)
 
         # Smooth transition
-        motion = motion_chunks[0][:self.chunklen-self.seedlen]
+        motion = motion_chunks[0][:self.chunk_len-self.seed_len]
         for i in range(1, len(motion_chunks)):
-            trans_prev = motion_chunks[i-1][-self.seedlen:]
-            trans_next = motion_chunks[i][:self.seedlen]
+            trans_prev = motion_chunks[i-1][-self.seed_len:]
+            trans_next = motion_chunks[i][:self.seed_len]
             trans_motion = []
-            for k in range(self.seedlen):
-                trans = ((self.seedlen - k) / (self.seedlen + 1)) * trans_prev[k] + ((k + 1) / (self.seedlen + 1)) * trans_next[k]
+            for k in range(self.seed_len):
+                trans = ((self.seed_len - k) / (self.seed_len + 1)) * trans_prev[k] + ((k + 1) / (self.seed_len + 1)) * trans_next[k]
                 trans_motion.append(trans)
             trans_motion = torch.stack(trans_motion)
             # Append each
             if i != len(motion_chunks) - 1: # not last chunk
-                motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen-self.seedlen]], dim=0)
+                motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seed_len:self.chunk_len-self.seed_len]], dim=0)
             else: # last chunk
-                motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seedlen:self.chunklen]], dim=0)
+                motion = torch.cat([motion, trans_motion, motion_chunks[i][self.seed_len:self.chunk_len]], dim=0)
         return motion, torch.cat(motion_chunks, dim=0)
