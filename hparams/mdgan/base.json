@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/prosody",
+        "processed": "data/takekuchi/processed/prosody_text",
         "log": "results"
     },
 
@@ -41,5 +41,5 @@
 
     "device": "cuda",
     "seed": 1,
-    "run_name": "prosody_disc_pose"
+    "run_name": "prosody_text_poseD"
 }

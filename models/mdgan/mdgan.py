@@ -143,6 +143,7 @@ class MultiDConditionalWGAN:
                     )[0]
                     gradients = gradients.reshape(gradients.size(0), -1)
                     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    cond_gp = gradient_penalty.item()
                     d_loss = nwd + gp_lambda * gradient_penalty
                     # --------------------------------------------------------------------------------
                     # Update 
@@ -171,6 +172,7 @@ class MultiDConditionalWGAN:
                     )[0]
                     gradients = gradients.reshape(gradients.size(0), -1)
                     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+                    pose_gp = gradient_penalty.item()
                     d_loss = nwd + gp_lambda * gradient_penalty
                     # --------------------------------------------------------------------------------
                     d_loss.backward()
@@ -205,7 +207,8 @@ class MultiDConditionalWGAN:
                             "cond_w_distance": - cond_nwd,
                             "pose_w_distance": - pose_nwd,
                             "cl_loss": pre_pose_error.item(),
-                            "gp_loss": gradient_penalty.item(),
+                            "cond_gp_loss": cond_gp,
+                            "pose_gp_loss": pose_gp,
                             "gen_loss": (cond_critic + pose_critic).item(),
                         }, step=n_iteration)
 
