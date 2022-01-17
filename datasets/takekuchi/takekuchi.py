@@ -62,9 +62,10 @@ class TakekuchiDataset:
             test_output = list(map(lowpass_filter, test_output))
             test_output = list(map(self.motion_scaler.transform, test_output))
             # Save test output motion to unity format
-            os.makedirs('./test_motion', exist_ok=True)
-            for i, motion in enumerate(test_output):
-                self.save_unity_result(motion, f"./test_motion/motion_{i}.txt")
+            if not os.path.exists('./synthesized/dev_motion'):
+                os.makedirs('./synthesized/dev_motion')
+                for i, motion in enumerate(test_output):
+                    self.save_unity_result(motion, f"./dev_motion/motion_{i}.txt")
             self.test_dataset = TestDataset(test_input, test_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
         self.speech_dim = self.speech_scaler.mean_.shape[0]

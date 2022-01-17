@@ -65,9 +65,9 @@ if __name__ == "__main__":
 
         # Generate result on test set
         os.makedirs('synthesized', exist_ok=True)
-        output_list, motion_list = exp.generate_result_on_test_set(model, data, 'synthesized')
+        output_list, motion_list = exp.generate_result_on_test_set(model, data, 'synthesized/prosody_text_poseD')
 
         # Evaluate KDE
-        kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)
-        with open('kde_result.txt', 'w') as f:
-            print(f"kde_mean: {kde_mean}\nkde_se: {kde_se}", file=f)
+        # kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)
+        # with open('kde_result.txt', 'w') as f:
+        #     print(f"kde_mean: {kde_mean}\nkde_se: {kde_se}", file=f)
