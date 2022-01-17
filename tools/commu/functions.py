@@ -291,17 +291,22 @@ class CommuCommand:
 
             line = self.command
 
-            if i == 0:
-                speed_2 = MAX_SPEED
-                speed_3 = MAX_SPEED
-                speed_4 = MAX_SPEED
-                speed_5 = MAX_SPEED
+            # if i == 0:
+            #     speed_2 = MAX_SPEED
+            #     speed_3 = MAX_SPEED
+            #     speed_4 = MAX_SPEED
+            #     speed_5 = MAX_SPEED
 
-            else:
-                speed_2 = int(np.abs((left_tate_euler[i] - left_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-                speed_3 = int(np.abs((left_yoko_euler[i] - left_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-                speed_4 = int(np.abs((right_tate_euler[i] - right_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
-                speed_5 = int(np.abs((right_yoko_euler[i] - right_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+            # else:
+            #     speed_2 = int(np.abs((left_tate_euler[i] - left_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+            #     speed_3 = int(np.abs((left_yoko_euler[i] - left_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+            #     speed_4 = int(np.abs((right_tate_euler[i] - right_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+            #     speed_5 = int(np.abs((right_yoko_euler[i] - right_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
+
+            speed_2 = 50
+            speed_3 = 50
+            speed_4 = 50
+            speed_5 = 50
 
             if speed_2 != 0:
                 line += f" 2 {int(left_tate_euler[i])} {int(speed_2)}"
