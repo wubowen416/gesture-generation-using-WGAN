@@ -213,7 +213,7 @@ class MultiDConditionalWGAN:
                         }, step=n_iteration)
 
                         # Log
-                        if gen_iteration % log_gap == 0:
+                        if gen_iteration > 0 and gen_iteration % log_gap == 0:
                         # if True:
                             print("generate samples")
                             # Generate result on dev set

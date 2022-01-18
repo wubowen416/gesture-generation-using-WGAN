@@ -30,7 +30,7 @@
     },
 
     "Train": {
-        "n_epochs": 150,
+        "n_epochs": 200,
         "batch_size": 128,
         "n_critic": 10,
         "lr": 1e-4,
