@@ -2,6 +2,7 @@ from google.cloud import speech
 import os
 import codecs
 import json
+import librosa
 
 
 def transcribe_file(audio_filename, text_filename):
@@ -9,7 +10,10 @@ def transcribe_file(audio_filename, text_filename):
 
     client = speech.SpeechClient()
 
-    with open(audio_filename, "rb") as f:
+    tmp = librosa.load(audio_filename, sr=16000) # Downsample
+    librosa.output.write_wav('tmp.wav', tmp, 16000)
+
+    with open('tmp.wav', "rb") as f:
         content = f.read()
 
     audio = speech.RecognitionAudio(content=content)
