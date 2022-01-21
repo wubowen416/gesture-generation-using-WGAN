@@ -15,6 +15,7 @@ class TakekuchiDataset:
 
         self.chunklen = hparams.Data.chunklen
         self.seedlen = hparams.Data.seedlen
+        self.num_sample_per_generator = hparams.Data.num_sample_per_generator
         
         # Load scalers
         self.speech_scaler = jl.load(os.path.join(data_dir, 'speech_scaler.jl'))
@@ -47,7 +48,6 @@ class TakekuchiDataset:
 
             # scale
             dev_input = list(map(self.speech_scaler.transform, dev_input))
-            # dev_output = list(map(lowpass_filter, dev_output))
             dev_output = list(map(self.motion_scaler.transform, dev_output))
             self.dev_dataset = TestDataset(dev_input, dev_output, hparams.Data.chunklen, hparams.Data.seedlen)
 
@@ -86,7 +86,7 @@ class TakekuchiDataset:
             yield TrainDataset(inputs, outputs, chunklen, seedlen, stride=stride)
 
     def get_train_dataset(self):
-        return self.train_dataset_generator(self.chunklen, self.seedlen, stride=1, max_num_samples=250)
+        return self.train_dataset_generator(self.chunklen, self.seedlen, stride=1, max_num_samples=self.num_sample_per_generator)
         # return self.train_dataset
 
     def get_dev_dataset(self):
@@ -110,7 +110,7 @@ class TakekuchiDataset:
         data = self.motion_scaler.inverse_transform(data)
         # Unitize
         unity_lines = transform(data)
-        # unity_lines = filter(unity_lines)
+        unity_lines = lowpass_filter(unity_lines)
         # Save
         np.savetxt(save_path, unity_lines.T)
         prepend_line = f"{data.shape[0]}\n12\n0.05"

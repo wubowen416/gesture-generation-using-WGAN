@@ -35,7 +35,7 @@ class TrainDataset(Dataset):
 
         self.Y_chunks = np.concatenate([chunkize(x, chunklen, stride) for x in Y if x.shape[0] >= chunklen], axis=0)
 
-        print(self.X_chunks.shape, self.Y_chunks.shape)
+        print("[base_dataset.py]", self.X_chunks.shape, self.Y_chunks.shape)
 
         # assert 0
 

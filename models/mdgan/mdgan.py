@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import torch
-from torch import autograd
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -9,10 +8,6 @@ from .generator import PoseGenerator
 from .discriminator import ConvDiscriminator, ConditionalConvDiscriminator
 from .kde_score import calculate_kde, calculate_kde_batch
 from .utils import compute_derivative, compute_velocity
-import wandb
-
-from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
-
 import wandb
 
 torch.backends.cudnn.benchmark = True
@@ -45,7 +40,6 @@ class MultiDConditionalWGAN:
         self.gen = PoseGenerator(
             d_cond=self.d_cond,
             d_data=self.d_data,
-            chunk_len=self.chunk_len,
             **self.gen_config.to_dict()
         )
 
@@ -81,8 +75,6 @@ class MultiDConditionalWGAN:
         batch_size = hparams.Train.batch_size
         n_critic = hparams.Train.n_critic
         lr = hparams.Train.lr
-        # gp
-        gp_lambda = hparams.Train.gp_lambda
         # cl
         cl_lambda = hparams.Train.cl_lambda
 
@@ -118,77 +110,38 @@ class MultiDConditionalWGAN:
                     cond = cond.to(self.device)
                     target = target.to(self.device)
 
-                    # Train cond disc
+                    # Fake poses
                     self.gen.eval()
-                    self.cond_disc.train()
-                    self.cond_disc.zero_grad()
-
                     gen_outputs = self.gen(cond, seed).detach()
-                    nwd = - self.cond_disc(target, cond).mean() + self.cond_disc(gen_outputs, cond).mean()
-                    cond_nwd = nwd.item()
-                    # --------------------------------------------------------------------------------
-                    # Compute gradient penalty
-                    # Random weight term for interpolation between real and fake samples
-                    alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
-                    # Get random interpolation between real and fake samples
-                    interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
-                    d_interpolate = self.cond_disc(interpolate, cond)
-                    gradients = autograd.grad(
-                        outputs=d_interpolate,
-                        inputs=interpolate,
-                        grad_outputs=torch.ones_like(d_interpolate),
-                        create_graph=True,
-                        retain_graph=True,
-                        only_inputs=True,
-                    )[0]
-                    gradients = gradients.reshape(gradients.size(0), -1)
-                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                    cond_gp = gradient_penalty.item()
-                    d_loss = nwd + gp_lambda * gradient_penalty
-                    # --------------------------------------------------------------------------------
+
+                    # Train cond disc
+                    self.cond_disc.train()
+                    cond_nwd = - self.cond_disc(target, cond).mean() + self.cond_disc(gen_outputs, cond).mean()
+                    cond_disc_loss = cond_nwd
+
                     # Update 
-                    d_loss.backward()
+                    self.cond_disc.zero_grad()
+                    cond_disc_loss.backward()
                     self.cond_d_opt.step()
 
                     # Train pose disc
                     self.pose_disc.train()
+                    pose_nwd = - self.pose_disc(target).mean() + self.pose_disc(gen_outputs).mean()
+                    pose_disc_loss = pose_nwd
+
+                    # Update
                     self.pose_disc.zero_grad()
-                    nwd = - self.pose_disc(target).mean() + self.pose_disc(gen_outputs).mean()
-                    pose_nwd = nwd.item()
-                    # --------------------------------------------------------------------------------
-                    # Compute gradient penalty
-                    # Random weight term for interpolation between real and fake samples
-                    alpha = torch.Tensor(np.random.random((1, 1))).to(self.device)
-                    # Get random interpolation between real and fake samples
-                    interpolate = (alpha * target + ((1 - alpha) * gen_outputs)).requires_grad_(True)
-                    d_interpolate = self.pose_disc(interpolate)
-                    gradients = autograd.grad(
-                        outputs=d_interpolate,
-                        inputs=interpolate,
-                        grad_outputs=torch.ones_like(d_interpolate),
-                        create_graph=True,
-                        retain_graph=True,
-                        only_inputs=True,
-                    )[0]
-                    gradients = gradients.reshape(gradients.size(0), -1)
-                    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                    pose_gp = gradient_penalty.item()
-                    d_loss = nwd + gp_lambda * gradient_penalty
-                    # --------------------------------------------------------------------------------
-                    d_loss.backward()
+                    pose_disc_loss.backward()
                     self.pose_d_opt.step()
 
                     # Train generator
-                    # if False:
+                    self.gen.train()
+                    self.cond_disc.eval()
+                    self.pose_disc.eval()
                     if idx_batch % n_critic == 0:
-                        self.gen.train()
-                        self.cond_disc.eval()
-                        self.pose_disc.eval()
-
-                        self.g_opt.zero_grad()
                         gen_outputs = self.gen(cond, seed)
 
-                        # Loss
+                        # Critic
                         cond_critic = - self.cond_disc(gen_outputs, cond).mean()
                         pose_critic = - self.pose_disc(gen_outputs).mean()
 
@@ -198,22 +151,23 @@ class MultiDConditionalWGAN:
                             gen_outputs[:, :self.seed_len], seed[:, :self.seed_len], reduction='none')
                         pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
                         pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                        g_loss = (0.5 * cond_critic + 0.5 * pose_critic) + cl_lambda * pre_pose_error
                         # --------------------------------------------------------------------------------
-                        g_loss.backward()
 
+                        # Loss
+                        g_loss = (1 * cond_critic + 0.0 * pose_critic) + cl_lambda * pre_pose_error
+
+                        # Update
+                        self.gen.zero_grad()
+                        g_loss.backward()
                         # Operate grads
                         torch.nn.utils.clip_grad_norm_(self.gen.parameters(), hparams.Train.grad_norm_value)
                         torch.nn.utils.clip_grad_value_(self.gen.parameters(), hparams.Train.grad_clip_value)
-
                         self.g_opt.step()
 
                         wandb.log({
-                            "cond_w_distance": -cond_nwd,
-                            "pose_w_distance": -pose_nwd,
+                            "cond_w_distance": -cond_nwd.item(),
+                            "pose_w_distance": -pose_nwd.item(),
                             "cl_loss": pre_pose_error.item(),
-                            "cond_gp_loss": cond_gp,
-                            "pose_gp_loss": pose_gp,
                             "gen_loss": (cond_critic + pose_critic).item(),
                         }, step=n_iteration)
 
@@ -223,9 +177,6 @@ class MultiDConditionalWGAN:
                             print("generate samples")
                             # Generate result on dev set
                             output_list, _, motion_list, _ = self.synthesize_batch(data.get_dev_dataset())
-                            # for i, output in enumerate(output_list):
-                            #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
-                            # Evaluate KDE
                             output = torch.cat(output_list, dim=0).cpu().numpy()
                             motion = torch.cat(motion_list, dim=0).cpu().numpy()
                             output = data.motion_scaler.inverse_transform(output)

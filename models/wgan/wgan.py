@@ -54,6 +54,7 @@ class ConditionalWGAN:
 
     
     def build(self, chkpt_path=None):
+        # self.gen = PoseGenerator(d_cond=self.cond_dim, d_noise=self.noise_dim, d_pose=self.output_dim, n_poses=self.chunklen, d_model=self.gen_hidden, num_layers=self.gen_layers, dropout=self.gen_dropout)
         self.gen = PoseGenerator(audio_feature_size=self.cond_dim, noise_size=self.noise_dim, dir_size=self.output_dim, n_poses=self.chunklen, hidden_size=self.gen_hidden, num_layers=self.gen_layers, dropout=self.gen_dropout, layernorm=self.gen_layernorm)
         self.disc = ConvDiscriminator(audio_feature_size=self.cond_dim, n_poses=self.chunklen, dir_size=self.disc_input_dim, hidden_size=self.disc_hidden, batchnorm=self.disc_batchnorm, layernorm=self.disc_layernorm, sa=False)
         self.gen.to(self.device)

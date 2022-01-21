@@ -7,7 +7,8 @@
     "Data": {
         "valid_ratio": 0.1,
         "chunklen": 34,
-        "seedlen": 4
+        "seedlen": 4,
+        "num_sample_per_generator": 250
     },
 
     "Infer": {
@@ -17,10 +18,9 @@
     "Model": {
         "Generator": {
             "noise_dim": 20,
-            "hidden": 256,
+            "hidden": 252,
             "num_layers": 2,
-            "layernorm": true,
-            "dropout": 0.2
+            "dropout": 0.1
         },
         "Discriminator": {
             "hidden": 128,
@@ -46,5 +46,5 @@
 
     "device": "cuda",
     "seed": 1,
-    "run_name": "prosody_text_gradnorm_usevelacc"
+    "run_name": "prosody_text_gradnorm_usevelacc_residual"
 }

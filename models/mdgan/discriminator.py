@@ -3,22 +3,31 @@ from torch import nn
 from torch.nn.utils.parametrizations import spectral_norm
 
 
-def conv_block(d_in, d_out, downsample=False):
-
-        if downsample:
-            kernel_size = 4
-            stride = 2
-        else:
-            kernel_size = 3
-            stride = 1
-            
-        net = nn.Sequential(
-            spectral_norm(nn.Conv1d(d_in, d_out, kernel_size, stride, padding=0)),
-            nn.LayerNorm(d_out),
+def conv_block(d_in, d_out, downsample=False, padding=0):
+    if downsample:
+        kernel_size = 4
+        stride = 2
+    else:
+        kernel_size = 3
+        stride = 1
+    return nn.Sequential(
+            Permute([0, 2, 1]),
+            spectral_norm(nn.Conv1d(d_in, d_out, kernel_size, stride, padding=padding)),
+            Permute([0, 2, 1]),
+            spectral_norm(nn.LayerNorm(d_out)),
             nn.GELU()
         )
-        return net
-    
+
+
+def linear_block(d_in, d_out):
+    return nn.Sequential(
+            spectral_norm(nn.Linear(d_in, d_out//2)),
+            spectral_norm(nn.LayerNorm(d_out//2)),
+            nn.GELU(),
+            spectral_norm(nn.Linear(d_out//2, d_out)),
+            spectral_norm(nn.LayerNorm(d_out)),
+            nn.GELU()
+        )
 
 
 class Permute(nn.Module):
@@ -36,54 +45,21 @@ class ConditionalConvDiscriminator(nn.Module):
 
         super().__init__()
 
-        self.f_data = nn.Sequential(
-            nn.Linear(d_data, d_model//4),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(d_model//4, d_model//2)
-        )
-
-        self.f_cond = nn.Sequential(
-            nn.Linear(d_cond, d_model//4),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(d_model//4, d_model//2)
-        )
-
+        self.f_data = linear_block(d_data, d_model//2)
+        self.f_cond = linear_block(d_cond, d_model//2)
         self.f_conv = nn.Sequential(
-            conv_block(d_model, d_model, downsample=False, batchnorm=False),
+            conv_block(d_model, d_model, padding='same'),
+            conv_block(d_model, d_model),
+            conv_block(d_model, 2*d_model, downsample=True),
+            conv_block(2*d_model, 2*d_model),
+            conv_block(2*d_model, 4*d_model, downsample=True),
+            conv_block(4*d_model, 4*d_model),
             Permute([0, 2, 1]),
-            nn.LayerNorm((128)),
-            Permute([0, 2, 1]),
-            conv_block(d_model, 2 * d_model, downsample=True, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((256)),
-            Permute([0, 2, 1]),
-
-            conv_block(2 * d_model, 2 * d_model, downsample=False, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((256)),
-            Permute([0, 2, 1]),
-            conv_block(2 * d_model, 4 * d_model, downsample=True, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((512)),
-            Permute([0, 2, 1]),
-
-            conv_block(4 * d_model, 4 * d_model, downsample=False, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((512)),
-            Permute([0, 2, 1]),
-
-            nn.Conv1d(4 * d_model, 8 * d_model, 3)
+            spectral_norm(nn.Conv1d(4*d_model, 8*d_model, kernel_size=3, stride=1, padding=0)),
+            Permute([0, 2, 1])
         ) # for 34 frames
-
-        self.f_out = nn.Sequential(
-            nn.Linear(8*d_model, 256), 
-            nn.LayerNorm(256),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(256, 64),
-            nn.LayerNorm(64),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(64, 1),
-        )
+        self.f_out = linear_block(8*d_model, d_model)
+        self.proj = spectral_norm(nn.Linear(d_model, 1))
 
     def forward(self, x_data, x_cond):
         """
@@ -93,16 +69,13 @@ class ConditionalConvDiscriminator(nn.Module):
         Returns:
             Tensor, shape [batch_size, 1]
         """
-
         x_cond = self.f_cond(x_cond)
         x_data = self.f_data(x_data)
-        x = torch.cat([x_cond, x_data], dim=-1) # (N, T, hidden_size)
-
-        x = x.transpose(1, 2)
+        x = torch.cat([x_cond, x_data], dim=-1) # (N, T, d_model)
         x = self.f_conv(x)
-        x = x.transpose(1, 2)
         x = x.view(x.size(0), -1)
-        return self.f_out(x)
+        x = self.f_out(x)
+        return self.proj(x)
 
     def count_parameters(self):
         return sum([p.numel() for p in self.parameters() if p.requires_grad])
@@ -114,48 +87,20 @@ class ConvDiscriminator(nn.Module):
 
         super().__init__()
 
-        self.f_data = nn.Sequential(
-            nn.Linear(d_data, d_model//2),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(d_model//2, d_model)
-        )
-
+        self.f_data = linear_block(d_data, d_model)
         self.f_conv = nn.Sequential(
-            conv_block(d_model, d_model, downsample=False, batchnorm=False),
+            conv_block(d_model, d_model, padding='same'),
+            conv_block(d_model, d_model),
+            conv_block(d_model, 2*d_model, downsample=True),
+            conv_block(2*d_model, 2*d_model),
+            conv_block(2*d_model, 4*d_model, downsample=True),
+            conv_block(4*d_model, 4*d_model),
             Permute([0, 2, 1]),
-            nn.LayerNorm((128)),
-            Permute([0, 2, 1]),
-            conv_block(d_model, 2 * d_model, downsample=True, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((256)),
-            Permute([0, 2, 1]),
-
-            conv_block(2 * d_model, 2 * d_model, downsample=False, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((256)),
-            Permute([0, 2, 1]),
-            conv_block(2 * d_model, 4 * d_model, downsample=True, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((512)),
-            Permute([0, 2, 1]),
-
-            conv_block(4 * d_model, 4 * d_model, downsample=False, batchnorm=False),
-            Permute([0, 2, 1]),
-            nn.LayerNorm((512)),
-            Permute([0, 2, 1]),
-
-            nn.Conv1d(4 * d_model, 8 * d_model, 3)
+            spectral_norm(nn.Conv1d(4*d_model, 8*d_model, kernel_size=3, stride=1, padding=0)),
+            Permute([0, 2, 1])
         ) # for 34 frames
-
-        self.f_out = nn.Sequential(
-            nn.Linear(8*d_model, 256), 
-            nn.LayerNorm(256),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(256, 64),
-            nn.LayerNorm(64),
-            nn.LeakyReLU(0.2, True),
-            nn.Linear(64, 1),
-        )
+        self.f_out = linear_block(8*d_model, d_model)
+        self.proj = spectral_norm(nn.Linear(d_model, 1))
 
     def forward(self, x):
         """
@@ -165,11 +110,9 @@ class ConvDiscriminator(nn.Module):
             Tensor, shape [batch_size, 1]
         """
         x = self.f_data(x)
-        x = x.transpose(1, 2)
         x = self.f_conv(x)
-        x = x.transpose(1, 2)
-        x = x.view(x.size(0), -1)
-        return self.f_out(x)
+        x = self.f_out(x)
+        return self.proj(x)
 
     def count_parameters(self):
         return sum([p.numel() for p in self.parameters() if p.requires_grad])

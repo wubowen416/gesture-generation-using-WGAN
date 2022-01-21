@@ -7,7 +7,8 @@
     "Data": {
         "valid_ratio": 0.1,
         "chunklen": 34,
-        "seedlen": 4
+        "seedlen": 4,
+        "num_sample_per_generator": 2000
     },
 
     "Infer": {
@@ -18,8 +19,7 @@
         "Generator": {
             "d_noise": 20,
             "d_model": 256,
-            "num_layers": 2,
-            "dropout": 0.1
+            "num_layers": 2
         },
         "CondDiscriminator": {
             "d_model": 128
@@ -34,7 +34,6 @@
         "batch_size": 32,
         "n_critic": 10,
         "lr": 1e-4,
-        "gp_lambda": 1,
         "cl_lambda": 1,
         "log_gap": 1500,
         "grad_norm_value": 50,
