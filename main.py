@@ -12,7 +12,6 @@ import datasets
 import models
 
 import torch
-torch.backends.cudnn.benchmark = True
 import numpy as np
 
 
@@ -65,7 +64,7 @@ if __name__ == "__main__":
 
         # Generate result on test set
         os.makedirs('synthesized', exist_ok=True)
-        output_list, motion_list = exp.generate_result_on_test_set(model, data, 'synthesized/prosody_text_poseD')
+        output_list, motion_list = exp.generate_result_on_test_set(model, data, f'synthesized/{hparams.run_name}')
 
         # Evaluate KDE
         # kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)

@@ -118,7 +118,7 @@ class MultiDConditionalWGAN:
                     cond = cond.to(self.device)
                     target = target.to(self.device)
 
-                    # Train cond discriminator
+                    # Train cond disc
                     self.gen.eval()
                     self.cond_disc.train()
                     self.cond_disc.zero_grad()
@@ -198,14 +198,19 @@ class MultiDConditionalWGAN:
                             gen_outputs[:, :self.seed_len], seed[:, :self.seed_len], reduction='none')
                         pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
                         pre_pose_error = pre_pose_error.mean() # mean over batch samples
-                        g_loss = .5 * (cond_critic + pose_critic) + cl_lambda * pre_pose_error
+                        g_loss = (0.5 * cond_critic + 0.5 * pose_critic) + cl_lambda * pre_pose_error
                         # --------------------------------------------------------------------------------
                         g_loss.backward()
+
+                        # Operate grads
+                        torch.nn.utils.clip_grad_norm_(self.gen.parameters(), hparams.Train.grad_norm_value)
+                        torch.nn.utils.clip_grad_value_(self.gen.parameters(), hparams.Train.grad_clip_value)
+
                         self.g_opt.step()
 
                         wandb.log({
-                            "cond_w_distance": - cond_nwd,
-                            "pose_w_distance": - pose_nwd,
+                            "cond_w_distance": -cond_nwd,
+                            "pose_w_distance": -pose_nwd,
                             "cl_loss": pre_pose_error.item(),
                             "cond_gp_loss": cond_gp,
                             "pose_gp_loss": pose_gp,

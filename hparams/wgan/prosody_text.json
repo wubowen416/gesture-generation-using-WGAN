@@ -34,13 +34,17 @@
         "batch_size": 128,
         "n_critic": 10,
         "lr": 1e-4,
-        "use_vel": false,
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
-        "log_gap": 1500
+        "log_gap": 1500,
+        "grad_norm_value": 20,
+        "grad_clip_value": 5,
+        "use_vel": true,
+        "use_acc": true
     },
 
     "device": "cuda",
-    "seed": 1
+    "seed": 1,
+    "run_name": "prosody_text_gradnorm_usevelacc"
 }

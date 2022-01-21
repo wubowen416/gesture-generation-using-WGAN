@@ -139,17 +139,17 @@ class ConvDiscriminator(nn.Module):
             if n_poses == 34:
                 self.conv_layers = nn.Sequential(
                     self.conv_block(hidden_size, hidden_size, downsample=False, batchnorm=False),
-                    nn.LayerNorm((128, 32)),
+                    nn.LayerNorm((hidden_size, 32)),
                     self.conv_block(hidden_size, 2 * hidden_size, downsample=True, batchnorm=False),
-                    nn.LayerNorm((256, 15)),
+                    nn.LayerNorm((2*hidden_size, 15)),
 
                     self.conv_block(2 * hidden_size, 2 * hidden_size, downsample=False, batchnorm=False),
-                    nn.LayerNorm((256, 13)),
+                    nn.LayerNorm((2*hidden_size, 13)),
                     self.conv_block(2 * hidden_size, 4 * hidden_size, downsample=True, batchnorm=False),
-                    nn.LayerNorm((512, 5)),
+                    nn.LayerNorm((4*hidden_size, 5)),
 
                     self.conv_block(4 * hidden_size, 4 * hidden_size, downsample=False, batchnorm=False),
-                    nn.LayerNorm((512, 3)),
+                    nn.LayerNorm((4*hidden_size, 3)),
 
                     nn.Conv1d(4 * hidden_size, 8 * hidden_size, 3)
                 ) # for 34 frames
@@ -399,7 +399,7 @@ class ConvDiscriminator(nn.Module):
             )
         elif layernorm:
             self.out_net = nn.Sequential(
-                nn.Linear(1024, 256), 
+                nn.Linear(8 * hidden_size, 256), 
                 nn.LayerNorm(256),
                 nn.LeakyReLU(0.2, True),
                 nn.Linear(256, 64),

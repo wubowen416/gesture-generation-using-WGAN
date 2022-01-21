@@ -36,19 +36,21 @@ class ConditionalWGAN:
         self.gen_layernorm = hparams.Model.Generator.layernorm
         self.gen_dropout = hparams.Model.Generator.dropout
         # Discriminator
+        self.disc_input_dim = output_dim
         self.disc_hidden = hparams.Model.Discriminator.hidden
         self.disc_batchnorm = hparams.Model.Discriminator.batchnorm
         self.disc_layernorm = hparams.Model.Discriminator.layernorm
 
-        self.use_vel = False
-        self.disc_input_dim = output_dim
-        if "use_vel" in hparams.Train:
-            if hparams.Train.use_vel:
-                self.use_vel = True
-                self.disc_input_dim = 2 * output_dim
+        self.use_vel = hparams.Train.use_vel
+        self.use_acc = hparams.Train.use_acc
+        if self.use_vel:
+            self.disc_input_dim += output_dim
+        if self.use_acc:
+            self.disc_input_dim += output_dim
 
         # Device
         self.device = hparams.device
+        self.run_name = hparams.run_name
 
     
     def build(self, chkpt_path=None):
@@ -127,8 +129,18 @@ class ConditionalWGAN:
                     latent = self.sample_noise(cond.shape[0], device=self.device)
                     with torch.no_grad():
                         gen_outputs = self.gen(seed, latent, cond)
-                    nwd = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
 
+                    # Calculate vel
+                    if self.use_vel:
+                        target_vel = torch.cat([torch.zeros((target.size(0), 1, target.size(-1)), device=self.device), target[:,1:,:] - target[:,:-1,:]], dim=1)
+                        gen_vel = torch.cat([torch.zeros((gen_outputs.size(0), 1, gen_outputs.size(-1)), device=self.device), gen_outputs[:,1:,:] - gen_outputs[:,:-1,:]], dim=1)
+                        target_acc = torch.cat([torch.zeros((target_vel.size(0), 1, target_vel.size(-1)), device=self.device), target_vel[:,1:,:] - target_vel[:,:-1,:]], dim=1)
+                        gen_acc = torch.cat([torch.zeros((gen_vel.size(0), 1, gen_vel.size(-1)), device=self.device), gen_vel[:,1:,:] - gen_vel[:,:-1,:]], dim=1)
+                        target = torch.cat([target, target_vel, target_acc], dim=-1)
+                        gen_outputs = torch.cat([gen_outputs, gen_vel, gen_acc], dim=-1)
+
+                    d_loss = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
+                    w_distance = -d_loss.item()
                     # --------------------------------------------------------------------------------
                     # Compute gradient penalty
                     # Random weight term for interpolation between real and fake samples
@@ -151,7 +163,7 @@ class ConditionalWGAN:
                         gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
                     else:
                         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
-                    d_loss = nwd + gp_lambda * gradient_penalty
+                    d_loss += gp_lambda * gradient_penalty
                     # --------------------------------------------------------------------------------
 
                     d_loss.backward()
@@ -165,11 +177,18 @@ class ConditionalWGAN:
                         latent = self.sample_noise(cond.shape[0], device=self.device)
                         gen_outputs = self.gen(seed, latent, cond)
 
+                        if self.use_vel:
+                            gen_vel = torch.cat([torch.zeros((gen_outputs.size(0), 1, gen_outputs.size(-1)), device=self.device), gen_outputs[:,1:,:] - gen_outputs[:,:-1,:]], dim=1)
+                            gen_acc = torch.cat([torch.zeros((gen_vel.size(0), 1, gen_vel.size(-1)), device=self.device), gen_vel[:,1:,:] - gen_vel[:,:-1,:]], dim=1)
+                            gen_outputs = torch.cat([gen_outputs, gen_vel, gen_acc], dim=-1)
+
                         # Loss
                         critic = - self.disc(gen_outputs, cond).mean()
 
                         # --------------------------------------------------------------------------------
                         # continuity loss
+                        if self.use_vel:
+                            gen_outputs = gen_outputs[:, :, :self.output_dim]
                         pre_pose_error = F.smooth_l1_loss(
                             gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
                         pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
@@ -177,10 +196,14 @@ class ConditionalWGAN:
                         g_loss = critic + cl_lambda * pre_pose_error
                         # --------------------------------------------------------------------------------
                         g_loss.backward()
+
+                        # Operate grads
+                        torch.nn.utils.clip_grad_norm_(self.gen.parameters(), hparams.Train.grad_norm_value)
+                        torch.nn.utils.clip_grad_value_(self.gen.parameters(), hparams.Train.grad_clip_value)
                         self.g_opt.step()
 
                         wandb.log({
-                            "w_distance": - nwd.item(),
+                            "w_distance": w_distance,
                             "cl_loss": pre_pose_error.item(),
                             "gp_loss": gradient_penalty.item(),
                             "gen_loss": critic.item(),
@@ -193,9 +216,7 @@ class ConditionalWGAN:
                         # if True:
                             print("generate samples")
                             # Generate result on dev set
-                            output_list, _, motion_list = self.synthesize_batch(data.get_dev_dataset())
-                            # for i, output in enumerate(output_list):
-                            #     data.save_result(output.cpu().numpy(), os.path.join(log_dir, f"{n_iteration//1000}k/motion_{i}"))
+                            output_list, _, motion_list, _ = self.synthesize_batch(data.get_dev_dataset())
                             # Evaluate KDE
                             output = torch.cat(output_list, dim=0).cpu().numpy()
                             motion = torch.cat(motion_list, dim=0).cpu().numpy()

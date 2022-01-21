@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/prosody_text",
+        "processed": "data/takekuchi/processed/prosody",
         "log": "results"
     },
 
@@ -30,16 +30,18 @@
     },
 
     "Train": {
-        "n_epochs": 200,
-        "batch_size": 128,
+        "n_epochs": 100,
+        "batch_size": 32,
         "n_critic": 10,
         "lr": 1e-4,
-        "gp_lambda": 10,
+        "gp_lambda": 1,
         "cl_lambda": 1,
-        "log_gap": 1500
+        "log_gap": 1500,
+        "grad_norm_value": 50,
+        "grad_clip_value": 5
     },
 
     "device": "cuda",
     "seed": 1,
-    "run_name": "prosody_text_poseD"
+    "run_name": "prosody_poseD"
 }

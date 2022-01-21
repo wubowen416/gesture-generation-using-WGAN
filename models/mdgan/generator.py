@@ -34,10 +34,11 @@ class PoseGenerator(nn.Module):
 
         self.gru = nn.ModuleList([nn.GRU(d_model+d_model//2, d_model, num_layers=1, batch_first=True, bidirectional=bidirectional)] + [
                                     nn.GRU(d_model, d_model, num_layers=1, batch_first=True, bidirectional=True) for _ in range(num_layers-1)])
-        self.layernorm = nn.ModuleList([nn.LayerNorm((chunk_len, d_model)) for _ in range(num_layers)])
+        self.layernorm = nn.ModuleList([nn.LayerNorm((d_model)) for _ in range(num_layers)])
 
         self.f_out = nn.Sequential(
             nn.Linear(d_model, d_model//2),
+            nn.LayerNorm((d_model//2)),
             nn.LeakyReLU(0.2, True),
             nn.Linear(d_model//2, d_data)
         )

@@ -1,8 +1,9 @@
 import torch
 from torch import nn
+from torch.nn.utils.parametrizations import spectral_norm
 
 
-def conv_block(in_channels, out_channels, downsample=False, padding=0, batchnorm=False):
+def conv_block(d_in, d_out, downsample=False):
 
         if downsample:
             kernel_size = 4
@@ -11,19 +12,22 @@ def conv_block(in_channels, out_channels, downsample=False, padding=0, batchnorm
             kernel_size = 3
             stride = 1
             
-        if batchnorm:
-            net = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
-                nn.BatchNorm1d(out_channels),
-                nn.LeakyReLU(0.2, True)
-            )
-
-        else:
-            net = nn.Sequential(
-                nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding),
-                nn.LeakyReLU(0.2, True)
-            )
+        net = nn.Sequential(
+            spectral_norm(nn.Conv1d(d_in, d_out, kernel_size, stride, padding=0)),
+            nn.LayerNorm(d_out),
+            nn.GELU()
+        )
         return net
+    
+
+
+class Permute(nn.Module):
+    def __init__(self, dims):
+        super().__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(*self.dims)
 
 
 class ConditionalConvDiscriminator(nn.Module):
@@ -46,23 +50,33 @@ class ConditionalConvDiscriminator(nn.Module):
 
         self.f_conv = nn.Sequential(
             conv_block(d_model, d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((128, 32)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((128)),
+            Permute([0, 2, 1]),
             conv_block(d_model, 2 * d_model, downsample=True, batchnorm=False),
-            nn.LayerNorm((256, 15)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((256)),
+            Permute([0, 2, 1]),
 
             conv_block(2 * d_model, 2 * d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((256, 13)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((256)),
+            Permute([0, 2, 1]),
             conv_block(2 * d_model, 4 * d_model, downsample=True, batchnorm=False),
-            nn.LayerNorm((512, 5)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((512)),
+            Permute([0, 2, 1]),
 
             conv_block(4 * d_model, 4 * d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((512, 3)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((512)),
+            Permute([0, 2, 1]),
 
             nn.Conv1d(4 * d_model, 8 * d_model, 3)
         ) # for 34 frames
 
         self.f_out = nn.Sequential(
-            nn.Linear(1024, 256), 
+            nn.Linear(8*d_model, 256), 
             nn.LayerNorm(256),
             nn.LeakyReLU(0.2, True),
             nn.Linear(256, 64),
@@ -74,8 +88,8 @@ class ConditionalConvDiscriminator(nn.Module):
     def forward(self, x_data, x_cond):
         """
         Args:
-            x_data - Tensor, shape [batch_size, 34, d_data]
-            x_cond - Tensor, shape [batch_size, 34, d_cond]
+            x_data - Tensor, shape [batch_size, time_step, d_data]
+            x_cond - Tensor, shape [batch_size, time_step, d_cond]
         Returns:
             Tensor, shape [batch_size, 1]
         """
@@ -108,23 +122,33 @@ class ConvDiscriminator(nn.Module):
 
         self.f_conv = nn.Sequential(
             conv_block(d_model, d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((128, 32)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((128)),
+            Permute([0, 2, 1]),
             conv_block(d_model, 2 * d_model, downsample=True, batchnorm=False),
-            nn.LayerNorm((256, 15)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((256)),
+            Permute([0, 2, 1]),
 
             conv_block(2 * d_model, 2 * d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((256, 13)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((256)),
+            Permute([0, 2, 1]),
             conv_block(2 * d_model, 4 * d_model, downsample=True, batchnorm=False),
-            nn.LayerNorm((512, 5)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((512)),
+            Permute([0, 2, 1]),
 
             conv_block(4 * d_model, 4 * d_model, downsample=False, batchnorm=False),
-            nn.LayerNorm((512, 3)),
+            Permute([0, 2, 1]),
+            nn.LayerNorm((512)),
+            Permute([0, 2, 1]),
 
             nn.Conv1d(4 * d_model, 8 * d_model, 3)
         ) # for 34 frames
 
         self.f_out = nn.Sequential(
-            nn.Linear(1024, 256), 
+            nn.Linear(8*d_model, 256), 
             nn.LayerNorm(256),
             nn.LeakyReLU(0.2, True),
             nn.Linear(256, 64),
@@ -136,7 +160,7 @@ class ConvDiscriminator(nn.Module):
     def forward(self, x):
         """
         Args:
-            x_data - Tensor, shape [batch_size, 34, d_data]
+            x_data - Tensor, shape [batch_size, time_step, d_data]
         Returns:
             Tensor, shape [batch_size, 1]
         """
