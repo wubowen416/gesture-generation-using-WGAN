@@ -4,6 +4,7 @@
 
 Official implementation for "Probabilistic Human-like Gesture Synthesis from Speech using GRU-based WGAN"
 https://dl.acm.org/doi/10.1145/3461615.3485407
+https://openreview.net/forum?id=ykvm7OLh7B.
 
 ## Example
 
