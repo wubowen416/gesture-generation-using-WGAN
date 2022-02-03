@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/mfcc_prosody_text",
+        "processed": "./data/takekuchi/processed/prosody",
         "log": "results"
     },
 
@@ -8,51 +8,53 @@
         "valid_ratio": 0.1,
         "chunklen": 34,
         "seedlen": 4,
-        "num_sample_per_generator": 200
+        "extraversion": {
+            "high": 0,
+            "mid": 1,
+            "low": 2
+        }
     },
 
     "Infer": {
-        "pre_trained": ""
+        "pre_trained": "",
+        "extraversion": ""
     },
 
     "Model": {
         "Generator": {
             "name": "PoseGenerator",
-            "noise_dim": 20,
-            "hidden_size": 256,
-            "num_layers": 2,
-            "dropout": 0.2,
-            "layernorm": true,
-            "batchnorm": false,
             "n_poses": 34,
+            "noise_dim": 20,
+            "hidden": 256,
+            "num_layers": 2,
+            "layernorm": true,
+            "dropout": 0.2,
             "activation": "leaky_relu"
         },
         "Discriminator": {
             "name": "ConvDiscriminator",
+            "n_poses": 34,
             "hidden_size": 128,
             "batchnorm": false,
             "layernorm": true,
-            "n_poses": 34,
             "activation": "leaky_relu"
         }
     },
 
     "Train": {
-        "n_epochs": 200,
+        "n_epochs": 150,
         "batch_size": 128,
-        "n_critic": 5,
         "lr": 1e-4,
+        "n_critic": 10,
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
         "log_gap": 1500,
-        "grad_norm_value": 20,
-        "grad_clip_value": 5,
-        "use_vel": false,
-        "use_acc": false
+        "use_vel": true,
+        "use_acc": true
     },
 
     "device": "cuda",
-    "seed": 1,
-    "run_name": "gradnorm_ncritic5"
+    "seed": 0,
+    "run_name": "prosody_va_vel_acc"
 }

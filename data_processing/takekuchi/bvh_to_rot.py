@@ -50,6 +50,12 @@ def vectorize_bvh_to_rotation(gesture_filename):
 
     # excluding fingers and hip and thigh
     org = np.concatenate([org[:, 3:27], org[:, 72:84]], axis=1)
+
+    # Clip rotation value to [0, 360)
+    while np.any(org < 0):
+        org[org < 0] = org[org < 0] + 360
+    while np.any(org >= 360) :
+        org[org >= 360] = org[org >= 360] - 360
     
 
     return org

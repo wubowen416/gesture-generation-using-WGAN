@@ -51,7 +51,8 @@ if __name__ == "__main__":
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         model.build()
-        model.train(data, log_dir, hparams)
+        # model.fit(data, log_dir, hparams)
+        model.fit_generator(data, log_dir, hparams)
 
     else:
         
@@ -65,8 +66,3 @@ if __name__ == "__main__":
         # Generate result on test set
         os.makedirs('synthesized', exist_ok=True)
         output_list, motion_list = exp.generate_result_on_test_set(model, data, f'synthesized/{hparams.run_name}')
-
-        # Evaluate KDE
-        # kde_mean, kde_se = exp.evaluate_kde(output_list, motion_list, data)
-        # with open('kde_result.txt', 'w') as f:
-        #     print(f"kde_mean: {kde_mean}\nkde_se: {kde_se}", file=f)
