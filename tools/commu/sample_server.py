@@ -3,8 +3,13 @@
 # 0.ライブラリのインポートと変数定義
 import socket
 import sys
+import argparse
 sys.path.append(".")
 from tools.Config import JsonConfig
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--data_path", type=str, default="tools/commu/sample_data/20210317-095527-729-rms.txt")
+args = parser.parse_args()
 
 config = JsonConfig("./tools/commu/config/tcpip.json")
 listen_num = 1
@@ -20,7 +25,7 @@ tcp_server.bind((config.Data.server_ip, config.Data.port))
 tcp_server.listen(listen_num)
 
 # load data
-with open('./tools/commu/sample_data/20210317-095527-729-rms.txt') as f:
+with open(args.data_path) as f:
     lines = f.readlines()
 
 # 4.ループして接続を待ち続ける

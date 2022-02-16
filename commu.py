@@ -14,8 +14,8 @@ from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 
 import numpy as np
 import torch
-# np.random.seed(1)
-# torch.manual_seed(1)
+np.random.seed(1)
+torch.manual_seed(1)
 
 
 def send_motion(motion, commu_client):
