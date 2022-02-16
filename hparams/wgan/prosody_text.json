@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "data/takekuchi/processed/mfcc_prosody_text",
+        "processed": "data/takekuchi/processed/prosody_text",
         "log": "results"
     },
 
@@ -8,7 +8,7 @@
         "valid_ratio": 0.1,
         "chunklen": 34,
         "seedlen": 4,
-        "num_sample_per_generator": 200
+        "num_sample_per_generator": 100
     },
 
     "Infer": {
@@ -38,9 +38,9 @@
     },
 
     "Train": {
-        "n_epochs": 200,
+        "n_epochs": 150,
         "batch_size": 128,
-        "n_critic": 5,
+        "n_critic": 10,
         "lr": 1e-4,
         "gp_lambda": 10,
         "gp_zero_center": false,
@@ -48,11 +48,11 @@
         "log_gap": 1500,
         "grad_norm_value": 20,
         "grad_clip_value": 5,
-        "use_vel": false,
-        "use_acc": false
+        "use_vel": true,
+        "use_acc": true
     },
 
     "device": "cuda",
     "seed": 1,
-    "run_name": "gradnorm_ncritic5"
+    "run_name": "gan_prosody_text"
 }

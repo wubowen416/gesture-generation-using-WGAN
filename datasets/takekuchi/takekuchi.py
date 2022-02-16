@@ -71,8 +71,14 @@ class TakekuchiDataset:
         self.speech_dim = self.speech_scaler.mean_.shape[0]
         self.motion_dim = self.motion_scaler.mean_.shape[0]
     
-    def train_dataset_generator(self, chunklen, seedlen, stride, max_num_samples):
+    def train_dataset_generator(self, chunklen, seedlen, stride, max_num_samples, shuffle=False):
         num_samples = len(self.train_input)
+        train_input = self.train_input
+        train_output = self.train_output
+        if shuffle:
+            new_idxs = np.random.shuffle(np.arange(num_samples))
+            train_input = [train_input[idx] for idx in new_idxs]
+            train_output = [train_output[idx] for idx in new_idxs]
         if num_samples <= max_num_samples:
             num_dataset = 1
         else:
@@ -81,8 +87,8 @@ class TakekuchiDataset:
             else:
                 num_dataset = num_samples // max_num_samples + 1
         for i in range(num_dataset):
-            inputs = self.train_input[i*max_num_samples:(i+1)*max_num_samples]
-            outputs = self.train_output[i*max_num_samples:(i+1)*max_num_samples]
+            inputs = train_input[i*max_num_samples:(i+1)*max_num_samples]
+            outputs = train_output[i*max_num_samples:(i+1)*max_num_samples]
             yield TrainDataset(inputs, outputs, chunklen, seedlen, stride=stride)
 
     def get_train_dataset(self):

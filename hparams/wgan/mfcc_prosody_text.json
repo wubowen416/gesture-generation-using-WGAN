@@ -1,6 +1,6 @@
 {
     "Dir": {
-        "processed": "./data/takekuchi/processed/prosody",
+        "processed": "data/takekuchi/processed/mfcc_prosody_text",
         "log": "results"
     },
 
@@ -8,7 +8,7 @@
         "valid_ratio": 0.1,
         "chunklen": 34,
         "seedlen": 4,
-        "num_sample_per_generator": 2000
+        "num_sample_per_generator": 200
     },
 
     "Infer": {
@@ -18,20 +18,21 @@
     "Model": {
         "Generator": {
             "name": "PoseGenerator",
-            "n_poses": 34,
             "noise_dim": 20,
             "hidden_size": 256,
             "num_layers": 2,
-            "layernorm": true,
             "dropout": 0.2,
+            "layernorm": true,
+            "batchnorm": false,
+            "n_poses": 34,
             "activation": "leaky_relu"
         },
         "Discriminator": {
             "name": "ConvDiscriminator",
-            "n_poses": 34,
             "hidden_size": 128,
             "batchnorm": false,
             "layernorm": true,
+            "n_poses": 34,
             "activation": "leaky_relu"
         }
     },
@@ -39,17 +40,19 @@
     "Train": {
         "n_epochs": 150,
         "batch_size": 128,
-        "lr": 1e-4,
         "n_critic": 10,
+        "lr": 1e-4,
         "gp_lambda": 10,
         "gp_zero_center": false,
         "cl_lambda": 1,
         "log_gap": 1500,
         "grad_norm_value": 99999,
-        "grad_clip_value": 99999
+        "grad_clip_value": 99999,
+        "use_vel": false,
+        "use_acc": false
     },
 
     "device": "cuda",
-    "seed": 0,
-    "run_name": "ICMI2021_prosody"
+    "seed": 1,
+    "run_name": "gan_mfcc_prosody_text"
 }

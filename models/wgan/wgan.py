@@ -43,6 +43,7 @@ class ConditionalWGAN:
         self.disc_hparams = hparams.Model.Discriminator.to_dict()
 
         # Training
+        self.lr = hparams.Train.lr
         if 'use_vel' in hparams.Train.keys():
             self.use_vel = hparams.Train.use_vel
             if self.use_vel:
@@ -75,15 +76,16 @@ class ConditionalWGAN:
         self.disc = self.disc_model(self.cond_dim, self.disc_input_dim, **self.disc_hparams)
         self.gen.to(self.device)
         self.disc.to(self.device)
+        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=self.lr)
+        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=self.lr)
+        self.gen_iteration = 0
         if chkpt_path:
             # Load chkpt
             self.load(chkpt_path)
-            self.gen.eval()
+            # wandb.init(project='gesture_generation_takekuchi', id=self.run_id, resume='must')
         else:
-            # Train
-            self.gen.train()
-            self.disc.train()
-            wandb.init(project='gesture_generation_takekuchi', name=self.run_name)
+            self.run_id = wandb.util.generate_id()
+            wandb.init(project='gesture_generation_takekuchi', name=self.run_name, id=self.run_id)
 
         print(f"Num of params: G - {self.gen.count_parameters()}, D - {self.disc.count_parameters()}")
 
@@ -92,7 +94,6 @@ class ConditionalWGAN:
         n_epochs = hparams.Train.n_epochs
         batch_size = hparams.Train.batch_size
         n_critic = hparams.Train.n_critic
-        lr = hparams.Train.lr
         # gp
         gp_lambda = hparams.Train.gp_lambda
         gp_zero_center = hparams.Train.gp_zero_center
@@ -101,12 +102,8 @@ class ConditionalWGAN:
 
         # Log relative
         n_iteration = 0
-        gen_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
-
-        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=lr)
-        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=lr)
 
         train_loader = DataLoader(
                 data.get_train_dataset(),
@@ -226,12 +223,12 @@ class ConditionalWGAN:
                         "cl_loss": pre_pose_error.item(),
                         "gp_loss": gradient_penalty.item(),
                         "gen_loss": critic.item(),
-                    }, step=n_iteration)
+                    }, step=self.gen_iteration)
 
                     # Log
-                    if gen_iteration % log_gap == 0:
+                    if self.gen_iteration % log_gap == 0:
 
-                        if gen_iteration > 0:
+                        if self.gen_iteration > 0:
 
                             print("generate samples")
                             # Generate result on dev set
@@ -252,13 +249,12 @@ class ConditionalWGAN:
                                 'nll_rot': nll_rot,
                                 'nll_vel': nll_vel,
                                 'nll_acc': nll_acc,
-                            }, step=n_iteration)
+                            }, step=self.gen_iteration)
 
                             # Save model
-                            self.save(log_dir, n_iteration)
+                            self.save(log_dir)
                             
-                    gen_iteration += 1
-                n_iteration += 1
+                    self.gen_iteration += 1
 
 
     def fit_generator(self, data, log_dir, hparams):
@@ -266,7 +262,6 @@ class ConditionalWGAN:
         n_epochs = hparams.Train.n_epochs
         batch_size = hparams.Train.batch_size
         n_critic = hparams.Train.n_critic
-        lr = hparams.Train.lr
         # gp
         gp_lambda = hparams.Train.gp_lambda
         gp_zero_center = hparams.Train.gp_zero_center
@@ -274,13 +269,8 @@ class ConditionalWGAN:
         cl_lambda = hparams.Train.cl_lambda
 
         # Log relative
-        n_iteration = 0
-        gen_iteration = 0
         log_gap = hparams.Train.log_gap
         hparams.dump(log_dir)
-
-        self.g_opt = torch.optim.Adam(self.gen.parameters(), lr=lr)
-        self.d_opt = torch.optim.Adam(self.disc.parameters(), lr=lr)
         
         for epoch in range(n_epochs):
 
@@ -330,7 +320,7 @@ class ConditionalWGAN:
                         target = torch.cat([target, target_acc], dim=-1)
                         gen_outputs = torch.cat([gen_outputs, gen_acc], dim=-1)
 
-                    d_loss = - self.disc(target, cond).mean() + self.disc(gen_outputs, cond).mean()
+                    d_loss = torch.mean(-self.disc(target, cond) + self.disc(gen_outputs, cond))
                     w_distance = -d_loss.item()
                     # --------------------------------------------------------------------------------
                     # Compute gradient penalty
@@ -379,22 +369,21 @@ class ConditionalWGAN:
                             gen_outputs = torch.cat([gen_outputs, gen_acc], dim=-1)
 
                         # Loss
-                        critic = - self.disc(gen_outputs, cond).mean()
+                        critic = torch.mean(-self.disc(gen_outputs, cond))
 
                         # --------------------------------------------------------------------------------
                         # continuity loss
-                        if self.use_vel:
+                        if self.use_vel or self.use_acc:
                             gen_outputs = gen_outputs[:, :, :self.output_dim]
                         pre_pose_error = F.smooth_l1_loss(gen_outputs[:, :self.seedlen], seed[:, :self.seedlen], reduction='none')
-                        pre_pose_error = pre_pose_error.sum(dim=1).sum(dim=1) # sum over joint & time step
-                        pre_pose_error = pre_pose_error.mean() # mean over batch samples
+                        pre_pose_error = torch.mean(torch.sum(pre_pose_error, dim=[1, 2])) # sum over joint & time step
                         g_loss = critic + cl_lambda * pre_pose_error
                         # --------------------------------------------------------------------------------
                         g_loss.backward()
 
                         # Operate grads
                         if self.grad_norm_value:
-                            torch.nn.utils.clip_grad_norm_(self.gen.parameters(), hparams.Train.grad_norm_value)
+                            grad_norm = torch.nn.utils.clip_grad_norm_(self.gen.parameters(), hparams.Train.grad_norm_value)
                         if self.grad_clip_value:
                             torch.nn.utils.clip_grad_value_(self.gen.parameters(), hparams.Train.grad_clip_value)
                         self.g_opt.step()
@@ -404,10 +393,11 @@ class ConditionalWGAN:
                             "cl_loss": pre_pose_error.item(),
                             "gp_loss": gradient_penalty.item(),
                             "gen_loss": critic.item(),
-                        }, step=n_iteration)
+                            "grad_norm": grad_norm.item()
+                        }, step=self.gen_iteration)
 
                         # Log
-                        if gen_iteration > 0 and gen_iteration % log_gap == 0:
+                        if self.gen_iteration > 0 and self.gen_iteration % log_gap == 0:
                         # if True:
                             print("generate samples")
                             # Generate result on dev set
@@ -428,20 +418,35 @@ class ConditionalWGAN:
                                 'nll_rot': nll_rot,
                                 'nll_vel': nll_vel,
                                 'nll_acc': nll_acc,
-                            }, step=n_iteration)
+                            }, step=self.gen_iteration)
 
                             # Save model
-                            self.save(log_dir, n_iteration)
-                        gen_iteration += 1
-                    n_iteration += 1
+                            self.save(log_dir)
+                        self.gen_iteration += 1
 
-    def save(self, log_dir, n_iteration):
+    def save(self, log_dir):
         os.makedirs(os.path.join(log_dir, "chkpt"), exist_ok=True)
-        save_path = os.path.join(log_dir, f"chkpt/generator_{n_iteration//1000}k.pt")
-        torch.save(self.gen.state_dict(), save_path)
+        save_path = os.path.join(log_dir, f"chkpt/chkpt_{self.gen_iteration//1000}k.pt")
+        info = dict()
+        info['gen_state_dict'] = self.gen.state_dict()
+        info['disc_state_dict'] = self.disc.state_dict()
+        info['g_opt_state_dict'] = self.g_opt.state_dict()
+        info['d_opt_state_dict'] = self.d_opt.state_dict()
+        info['gen_iteration'] = self.gen_iteration
+        info['run_id'] = self.run_id
+        info['run_name'] = self.run_name
+        torch.save(info, save_path)
 
     def load(self, chkpt_path):
-        self.gen.load_state_dict(torch.load(chkpt_path, map_location=self.device))
+        info = torch.load(chkpt_path, map_location=self.device)
+        # self.gen.load_state_dict(info)
+        self.gen.load_state_dict(info['gen_state_dict'])
+        self.disc.load_state_dict(info['disc_state_dict'])
+        self.g_opt.load_state_dict(info['g_opt_state_dict'])
+        self.d_opt.load_state_dict(info['d_opt_state_dcit']) # icmi2021 set this to d_opt_state_dcit
+        self.gen_iteration = info['gen_iteration']
+        self.run_id = info['run_id']
+        self.run_name = info['run_name']
     
     def synthesize_batch(self, batch_data):
         output_list, motion_list, output_chunk_list, indexs = [], [], [], []

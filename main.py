@@ -65,4 +65,9 @@ if __name__ == "__main__":
 
         # Generate result on test set
         os.makedirs('synthesized', exist_ok=True)
-        output_list, motion_list = exp.generate_result_on_test_set(model, data, f'synthesized/{hparams.run_name}')
+        output_list = []
+        for _ in range(1):
+            outputs, motion_list = exp.generate_result_on_test_set(model, data, f'synthesized/{hparams.run_name}')
+            output_list += outputs
+
+        print(exp.evaluate_gestures(output_list, motion_list))

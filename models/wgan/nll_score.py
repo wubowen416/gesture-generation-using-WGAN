@@ -39,7 +39,6 @@ def calculate_nll(inputs, targets):
 
     :param inputs: an [T, D] numpy array.
     :param targets: and [T, D] numpy array.
-
     """
     params = {'bandwidth': np.logspace(-1, 1, 20)}
     grid = GridSearchCV(KernelDensity(), params, cv=3)
