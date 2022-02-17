@@ -2,6 +2,7 @@
 Usage:
     main.py <model> <dataset> <hparams>
 """
+import pickle
 import os
 from docopt import docopt
 from tools.Config import JsonConfig
@@ -25,9 +26,10 @@ def send_motion(motion, commu_client):
     rotation_data = F.calculate_rotation_for_shouder(position)
     # Make Commu command
     command = F.CommuCommand(rotation_data)
-    command.to_csv('t.txt')
+    # command.to_csv('t.txt')
     send_command = command.to_command()
     # send motion via tcp/ip
+    # input("Press Enter to continue...")
     commu_client.sendall(send_command)
     return position
 
@@ -63,6 +65,18 @@ if __name__ == "__main__":
     commu_client = CommuClient()
     commu_client.reset_pose()
     GENERATED_FLAG = False
+
+    # with open("data/takekuchi/processed/prosody_hip_ext/Y_dev.p", "rb") as f:
+    #     Y_dev = pickle.load(f)
+
+    # motion = Y_dev[34]
+    # print(motion.shape)
+
+    
+
+    # send_motion(motion, commu_client)
+
+    # assert 0
 
     current_line = ""
     lines = ""
@@ -124,7 +138,7 @@ if __name__ == "__main__":
                     position = send_motion(motion, commu_client)
                     positions.append(position)
 
-                np.save('t.npy', np.concatenate(positions, axis=0))
+                # np.save('t.npy', np.concatenate(positions, axis=0))
             
             # Reset line for next line
             current_line = ""
