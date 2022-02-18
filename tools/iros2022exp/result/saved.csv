@@ -1,0 +1,10 @@
+personality_audio,personality_gt_mute,personality_icmi_mute,personality_low_mute,personality_mid_mute,personality_high_mute,personality_gt,personality_icmi,personality_low,personality_mid,personality_high,personality_gt_commu,personality_icmi_commu,personality_low_commu,personality_mid_commu,personality_high_commu,tension_audio,tension_gt_mute,tension_icmi_mute,tension_low_mute,tension_mid_mute,tension_high_mute,tension_gt,tension_icmi,tension_low,tension_mid,tension_high,tension_gt_commu,tension_icmi_commu,tension_low_commu,tension_mid_commu,tension_high_commu,nat_gt,nat_icmi,nat_low,nat_mid,nat_high,nat_gt_commu,nat_icmi_commu,nat_low_commu,nat_mid_commu,nat_high_commu
+4,4,5,4,5,6,6,5,4,5,5,5,5,5,5,4,6,5,5,2,4,5,6,5,5,4,5,5,5,4,5,5,6,5,3,3,3,3,4,2,4,4
+4,3,4,2,3,5,6,6,2,4,5,3,3,5,6,4,4,3,4,2,4,4,6,6,2,3,6,3,3,5,6,4,7,7,2,5,7,4,4,4,7,6
+6,6,5,3,5,6,5,6,3,4,6,6,5,5,6,6,5,6,5,3,5,6,5,5,3,4,5,5,5,5,5,5,6,5,2,5,6,5,5,3,6,6
+4,5,6,4,6,7,5,5,4,5,5,5,5,5,5,5,4,4,6,3,5,6,5,5,5,5,6,5,6,5,5,5,6,3,2,4,6,5,4,4,2,4
+5,2,4,1,1,6,6,6,2,4,5,3,5,1,6,5,5,2,5,1,1,5,6,5,3,2,5,2,5,1,6,6,7,7,3,5,5,5,6,3,6,6
+6,6,6,2,4,4,6,5,2,3,5,6,6,6,6,6,6,5,5,2,3,4,5,4,2,3,5,5,5,5,5,6,6,5,2,4,5,6,6,5,5,6
+4,5,5,5,4,6,5,5,4,4,5,5,5,5,5,5,4,5,4,2,4,6,5,4,5,4,5,5,4,5,4,5,6,4,5,4,3,5,4,3,5,3
+6,5,2,2,4,4,6,4,2,6,6,5,3,3,2,2,6,5,2,2,4,4,6,2,2,5,4,5,2,3,2,1,7,5,2,7,6,6,4,3,3,2
+6,6,6,2,4,6,6,6,4,5,6,6,5,5,5,5,6,5,4,2,4,6,5,5,4,5,5,5,5,5,5,4,6,6,3,5,5,7,5,5,5,5
