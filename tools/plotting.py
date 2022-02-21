@@ -19,7 +19,7 @@ lines = [
         [3, 9], [9, 10], [10, 11]
     ]
 
-def plot_position_3D(motion, path, mode):
+def plot_position_3D(motion, path):
 
     print(f'Plotting with length {motion.shape[0]}')
     
@@ -48,11 +48,7 @@ def plot_position_3D(motion, path, mode):
     ax.set_xlim(-50, 50)
 
     anim = FuncAnimation(fig, update_graph, range(motion.shape[0]), interval=50)
-
-    if mode == 'gif':
-        anim.save(path + '.gif')
-    elif mode == 'mp4':
-        anim.save(path + '.mp4')
+    anim.save(path)
 
     plt.close()
 
@@ -60,10 +56,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--npy_path', type=str, help='Motion npy file')
-    parser.add_argument('--save_path', type=str, default='motion', help='without extension')
-    parser.add_argument('--mode', type=str, default='gif', help='gif or mp4')
+    parser.add_argument('--save_path', type=str, default='motion.gif', help='with extension')
     args = parser.parse_args()
 
     motion = np.load(args.npy_path)
 
-    plot_position_3D(motion.reshape(-1, 36), args.save_path, args.mode)
+    plot_position_3D(motion.reshape(-1, 36), args.save_path)
