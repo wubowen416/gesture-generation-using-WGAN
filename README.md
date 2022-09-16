@@ -74,4 +74,4 @@ series = {ICMI '21 Companion}
 ```
 
 ## Contact
-For any questions, please contact wu.bowen@irl.sys.es.osaka-u.ac.jp
+For any questions, feel free to open an issue.
