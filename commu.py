@@ -10,7 +10,7 @@ from scipy.spatial.transform import Rotation as R
 
 import datasets
 import models
-from tools.commu.Client import DataClient, CommuClient
+from tools.commu.Client import DataClient, CommuClient, WavClient
 from tools.commu import functions as F
 from tools.takekuchi_dataset_tool.rot_to_pos import rot2pos
 from datasets.takekuchi.takekuchi import transform
@@ -20,21 +20,36 @@ import torch
 np.random.seed(1)
 torch.manual_seed(1)
 
+from tools.plotting import plot_position_3D
 
-def send_motion(motion, commu_client, from_numpy=False):
+
+def send_motion(motion, commu_client, wav_client: WavClient = None, from_numpy=False):
     # Convert to position
     position = rot2pos(motion)
+    # plot position
+    # plot_position_3D(position, 'test.gif')
+    # assert 0
     # Calculate angle
-    rotation_data = F.calculate_rotation_for_shouder(position)
+    rotation_data = F.calculate_rotation_for_shoulder(position)
     # Make Commu command
     command = F.CommuCommand(rotation_data)
-    # command.to_csv('t.txt')
-    send_command = command.to_command()
+    command.add_joint(joint_idx=0, values=motion[:, 4])
+    command.add_joint(joint_idx=1, values=motion[:, 5])
+    command.add_joint(joint_idx=7, values=motion[:, 9])
+    command.add_joint(joint_idx=8, values=motion[:, 11])
+    # command.to_csv('test.txt')
+    send_command = command.get_command()
+    # send first line to move to first position
+    commu_client.send(send_command[0])
     # send motion via tcp/ip
     if from_numpy:
         input("Press Enter to continue...")
+        if wav_client != None:
+            wav_client.start()
         commu_client.sendall(send_command)
     else:
+        if wav_client != None:
+            wav_client.start()
         commu_client.sendall(send_command)
     return position
 
@@ -66,12 +81,23 @@ if __name__ == "__main__":
     # model.build(chkpt_path=hparams.Infer.pre_trained)
 
     # Commu
+    # commu_client = None
     commu_client = CommuClient()
     commu_client.reset_pose()
     GENERATED_FLAG = False
+    # assert 0
 
-    if True: # Use numpy file
-        path = "synthesized/prosody_va/motion_102.txt" # unity file path
+    # Wav client
+    wav_client = None
+    wav_client = WavClient()
+    wav_client.load_wavfile("data/takekuchi/source/split/dev/inputs_16k_sigproc/audio1161.wav")
+
+    if True: # Use unity txt file
+        # path = "synthesized/dev_motion/motion_34.txt" # unity file path
+        # path = "synthesized/ICMI2021_prosody/motion_34.txt" # unity file path
+        path = "synthesized/prosody_va/motion_104.txt" # unity file path
+
+        # get rotation data
         with open(path, 'r') as f:
             lines = f.readlines()[3:]
         motion = []
@@ -79,6 +105,8 @@ if __name__ == "__main__":
             motion.append([float(x) for x in line.split(" ")])
         motion = np.array(motion).T
 
+        # add root rotation since the model does not output it
+        # and unity rotation does not contain it
         if motion.shape[-1] == 36:
             with open("data/takekuchi/processed/prosody_hip/Y_dev.p", 'rb') as f:
                 Y_dev = pickle.load(f)
@@ -109,8 +137,9 @@ if __name__ == "__main__":
 
         motion = transform_inverse(motion)
 
-        positions = send_motion(motion, commu_client, from_numpy=True)
-        # np.save('t.npy', np.concatenate(positions, axis=0))
+        # convert to command and send
+        positions = send_motion(motion, commu_client, wav_client, from_numpy=True)
+        # np.savetxt('t.txt', np.concatenate(positions, axis=0))
         assert 0
 
     else:

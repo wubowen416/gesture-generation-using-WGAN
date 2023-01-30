@@ -37,9 +37,14 @@ ROOT Hips
 					{
 						OFFSET -15.301900 0.000000 0.000000
 						CHANNELS 3 Zrotation Xrotation Yrotation
-						End Site
+						JOINT LeftHand
 						{
 							OFFSET -17.165703 0.000000 0.000000
+							CHANNELS 3 Zrotation Xrotation Yrotation
+							End Site
+							{
+								OFFSET -10.000000 0.000000 0.000000
+							}
 						}
                     }
                 }
@@ -56,9 +61,14 @@ ROOT Hips
 					{
 						OFFSET 15.301899 0.000000 0.000000
 						CHANNELS 3 Zrotation Xrotation Yrotation
-						End Site
+						JOINT RightHand
 						{
 							OFFSET 17.165699 0.000000 0.000000
+							CHANNELS 3 Zrotation Xrotation Yrotation
+							End Site
+							{
+								OFFSET 10.000000 0.000000 0.000000
+							}
 						}
                     }
                 }

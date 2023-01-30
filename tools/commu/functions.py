@@ -93,9 +93,9 @@ def generate(model, seed, cond, data, interpolate=False):
     # Rescale & slice & send
     return data.motion_scaler.inverse_transform(output.cpu().numpy()), seed
 
-def calculate_rotation_for_shouder(position):
+def calculate_rotation_for_shoulder(position):
     """36 dim position data from hip"""
-    position = position.reshape(-1, 12, 3)
+    position = position.reshape(len(position), -1, 3)
     # Swap z, x, y to x, y, z
     position[:, :, [0, 1, 2]] = position[:, :, [2, 0, 1]]
 
@@ -103,10 +103,14 @@ def calculate_rotation_for_shouder(position):
 
     # Left
     shoulder_index = 6
-    hand_index = 8
+    # hand_index = 8 # wrist
+    hand_index = 9 # fingertip
     shoulder_position = position[:, shoulder_index, :]
 
     shoulder_position[:, 1] += fixer
+
+    # lower shoudler z position to match human
+    shoulder_position[:, 2] -= 15
 
     hand_position = position[:, hand_index, :]
     direction_vector = normalize(hand_position - shoulder_position)
@@ -118,24 +122,26 @@ def calculate_rotation_for_shouder(position):
     alphas = []
     betas = []
     for x, y, z in zip(xs, ys, zs):
+
+        # calculate tate angle
         if z > 0:
             if x > 0:
                 alpha = np.rad2deg(np.arctan(x/z))
             else:
                 alpha = 270 + np.rad2deg(np.arctan(z/np.abs(x)))
-            if y > 0:
-                beta = np.rad2deg(np.arctan(y/z))
-            else:
-                beta = 270 + np.rad2deg(np.arctan(y/np.abs(z)))
         elif z < 0:
             if x < 0:
                 alpha = 180 + np.rad2deg(np.arctan(np.abs(x)/np.abs(z)))
             else:
                 alpha = 90 + np.rad2deg(np.arctan(np.abs(z)/x))
-            if y < 0:
-                beta = 180 + np.rad2deg(np.arctan(np.abs(y)/np.abs(z)))
-            else:
-                beta = 90 + np.rad2deg(np.arctan(np.abs(z)/y))
+
+        # calculate yoko angle
+        vector = np.array([x, y, z])
+        vector_xoz = np.array([x, 0, z])
+        beta = np.rad2deg(np.arccos(np.sum(vector * vector_xoz) / np.linalg.norm(vector_xoz)))
+        if y < 0:
+            beta = -beta
+        
         alphas.append(alpha)
         betas.append(beta)
 
@@ -143,11 +149,15 @@ def calculate_rotation_for_shouder(position):
     data["left"]["beta"] = np.array(betas)
 
     # Right
-    shoulder_index = 9
-    hand_index = 11
+    shoulder_index = 10
+    # hand_index = 12 # wrist
+    hand_index = 13 # fingertip
     shoulder_position = position[:, shoulder_index, :]
 
     shoulder_position[:, 1] -= fixer
+
+    # lower shoudler z position to match human
+    shoulder_position[:, 2] -= 15
 
     hand_position = position[:, hand_index, :]
     direction_vector = normalize(hand_position - shoulder_position)
@@ -157,24 +167,25 @@ def calculate_rotation_for_shouder(position):
     alphas = []
     betas = []
     for x, y, z in zip(xs, ys, zs):
+        # calculate take angle
         if z > 0:
             if x > 0:
                 alpha = np.rad2deg(np.arctan(x/z))
             else:
                 alpha = 270 + np.rad2deg(np.arctan(z/np.abs(x)))
-            if y > 0:
-                beta = np.rad2deg(np.arctan(y/z))
-            else:
-                beta = 270 + np.rad2deg(np.arctan(y/np.abs(z)))
         elif z < 0:
             if x < 0:
                 alpha = 180 + np.rad2deg(np.arctan(np.abs(x)/np.abs(z)))
             else:
                 alpha = 90 + np.rad2deg(np.arctan(np.abs(z)/x))
-            if y < 0:
-                beta = 180 + np.rad2deg(np.arctan(np.abs(y)/np.abs(z)))
-            else:
-                beta = 90 + np.rad2deg(np.arctan(np.abs(z)/y))
+
+        # calculate yoko angle
+        vector = np.array([x, y, z])
+        vector_xoz = np.array([x, 0, z])
+        beta = np.rad2deg(np.arccos(np.sum(vector * vector_xoz) / np.linalg.norm(vector_xoz)))
+        if y < 0:
+            beta = -beta
+
         alphas.append(alpha)
         betas.append(beta)
 
@@ -208,21 +219,14 @@ class CommuCommand:
         
         # yoko
         # left
-        left_yoko_euler = data["left"]["beta"]
-        assert np.all(left_yoko_euler >= 0), "yoko euler must be above 0."
-
-        left_yoko_euler[left_yoko_euler < 180] = left_yoko_euler[left_yoko_euler < 180] - 180
-        left_yoko_euler[left_yoko_euler > 180] = left_yoko_euler[left_yoko_euler > 180] - 180
-        left_yoko_euler[left_yoko_euler < -45] = -45
+        left_yoko_euler = -data["left"]["beta"]
         left_yoko_euler[left_yoko_euler > 25] = 25
+        left_yoko_euler[left_yoko_euler < -45] = -45
 
         # right
-        right_yoko_euler = data["right"]["beta"]
-        assert np.all(right_yoko_euler >= 0), "yoko euler must be above 0."
-        right_yoko_euler -= 180
-
-        right_yoko_euler[right_yoko_euler > 45] = 45
+        right_yoko_euler = -data["right"]["beta"]
         right_yoko_euler[right_yoko_euler < -25] = -25
+        right_yoko_euler[right_yoko_euler > 45] = 45
 
         # Collide with body
         # Left hand
@@ -233,16 +237,20 @@ class CommuCommand:
                     left_yoko_euler[i] = 0
             
             elif x > 30 and x < 40:
-                if y > 10:
-                    left_yoko_euler[i] = 10
+                if y > 0:
+                    left_yoko_euler[i] = 0
             
             elif x > 20 and x < 30:
-                if y > 20:
-                    left_yoko_euler[i] = 20
+                if y > 0:
+                    left_yoko_euler[i] = 0
 
             elif x > 10 and x < 20:
-                if y > 25:
-                    left_yoko_euler[i] = 25
+                if y > 0:
+                    left_yoko_euler[i] = 0
+
+            elif x > 0 and x < 10:
+                if y > 0:
+                    left_yoko_euler[i] = 0
 
             elif x < -40:
                 if y > 40:
@@ -256,20 +264,26 @@ class CommuCommand:
                     right_yoko_euler[i] = 0
             
             elif x < - 30 and x > - 40:
-                if y < - 10:
-                    right_yoko_euler[i] = - 10
+                if y < - 0:
+                    right_yoko_euler[i] = - 0
             
             elif x < - 20 and x > - 30:
-                if y < - 20:
-                    right_yoko_euler[i] = - 20
+                if y < - 0:
+                    right_yoko_euler[i] = - 0
 
             elif x < - 10 and x > - 20:
-                if y < - 25:
-                    right_yoko_euler[i] = - 25
+                if y < - 0:
+                    right_yoko_euler[i] = - 0
+
+            elif x < 0 and x > -10:
+                if y < 0:
+                    right_yoko_euler[i] = - 0
 
             elif x > 40:
                 if y < - 40:
                     right_yoko_euler[i] = - 40
+
+            # right_yoko_euler[i] = 0
 
         # import matplotlib.pyplot as plt
         # import matplotlib
@@ -303,10 +317,10 @@ class CommuCommand:
             #     speed_4 = int(np.abs((right_tate_euler[i] - right_tate_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
             #     speed_5 = int(np.abs((right_yoko_euler[i] - right_yoko_euler[i-1]) / (1 / SEND_FPS))) // DENOMINATOR
 
-            speed_2 = 50
-            speed_3 = 50
-            speed_4 = 50
-            speed_5 = 50
+            speed_2 = 1
+            speed_3 = 1
+            speed_4 = 1
+            speed_5 = 1
 
             if speed_2 != 0:
                 line += f" 2 {int(left_tate_euler[i])} {int(speed_2)}"
@@ -354,6 +368,40 @@ class CommuCommand:
         self.sheet = sheet.T
         self.command = lines
 
+    def add_joint(self, joint_idx: int, values: np.ndarray, speed: int = 1):
+        assert values.shape[0] == self.sheet.shape[0], "Length of values must be same as self.sheet"
+        for i in range(values.shape[0]):
+            # constrain
+            if joint_idx == 0: # koshi tate
+                value = values[i]
+                if value > 10:
+                    value = 10
+                elif value < -10:
+                    value = -10
+            elif joint_idx == 1: # koshi yoko
+                value = values[i]
+                if value > 60:
+                    value = 60
+                elif value < -60:
+                    value = -60
+            elif joint_idx == 7:
+                value = values[i]
+                if value > 10:
+                    value = 10
+                elif value < -10:
+                    value = -10
+            elif joint_idx == 8:
+                value = values[i]
+                if value > 60:
+                    value = 60
+                elif value < -60:
+                    value = -60
+            else:
+                raise NotImplementedError(f"Unsupported joint_idx {joint_idx}")
+
+            self.sheet[i, joint_idx] = value
+            self.command[i] = self.command[i][:-1] + f" {joint_idx} {int(value)} {speed}" + "\n"
+
     def to_csv(self, output_path):
 
         # Write to csv
@@ -363,7 +411,7 @@ class CommuCommand:
         line_0 = "comment:2nd row is default values: 3rd is axis number: 4th are motion inverval, motion steps, motion axes"
         line_1 = "0\t0\t90\t0\t-90\t0\t0\t0\t0\t0\t0\t0\t-5\t0"
         line_2 = "0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13"
-        line_3 = "10\t{}\t14".format(len(self.sheet))
+        line_3 = "20\t{}\t14".format(len(self.sheet))
         prepend_line(output_path, line_3)
         prepend_line(output_path, line_2)
         prepend_line(output_path, line_1)
@@ -376,7 +424,7 @@ class CommuCommand:
         # Append 'hello' at the end of file
             f.write(last_line)
 
-    def to_command(self):
+    def get_command(self):
         return self.command
 
     

@@ -6,9 +6,15 @@
     },
 
     "Commu": {
-        "server_ip": "irmouse02",
+        "server_ip": "172.27.174.94",
         "port": 8078,
         "encoding": "shift-jis",
         "interval": 0.05
+    },
+
+    "Wav": {
+        "server_ip": "172.27.174.94",
+        "port": 4002,
+        "interval": 0.01
     }
 }

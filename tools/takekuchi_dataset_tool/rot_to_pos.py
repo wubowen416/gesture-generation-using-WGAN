@@ -31,8 +31,7 @@ def create_hierarchy_nodes():
         if not len(hierarchy[idx]) == 0:
             line_type = hierarchy[idx][0]
             if line_type == 'OFFSET':
-                offset = np.array([float(hierarchy[idx][1]), float(
-                    hierarchy[idx][2]), float(hierarchy[idx][3])])
+                offset = np.array([float(hierarchy[idx][1]), float(hierarchy[idx][2]), float(hierarchy[idx][3])])
                 joint_offsets.append(offset)
             elif line_type == 'ROOT' or line_type == 'JOINT':
                 joint_names.append(hierarchy[idx][1])
@@ -43,19 +42,19 @@ def create_hierarchy_nodes():
     for idx, name in enumerate(joint_names):
         if idx == 0:
             parent = None
-        elif idx in [3, 6, 10]:  # spine1->shoulders
+        elif idx in [3, 6, 11]:  # spine1->shoulders
             parent = 2
         else:
             parent = idx - 1
 
         if name == 'End Site':
             children = None
-        elif idx == 0:  # hips
-            children = [1]
+        # elif idx == 0:  # hips
+        #     children = [1]
         elif idx == 2:  # spine1
-            children = [3, 6, 10]
-        elif idx == 9:  # lefthand
-            children = [10]
+            children = [3, 6, 11]
+        # elif idx == 9:  # lefthand
+        #     children = [10]
         # elif idx == 33:  # righthand
         #     children = [34, 38, 42, 46, 50]
         else:
@@ -84,7 +83,7 @@ def rot_vec_to_abs_pos_vec(frames, nodes):
 
     for frame in frames:
         node_idx = 0
-        for i in range(11):  # changed from 51
+        for i in range(13):  # changed from 51
             stepi = i*3
             z_deg = float(frame[stepi])
             x_deg = float(frame[stepi+1])
@@ -138,19 +137,20 @@ def rot_vec_to_abs_pos_vec(frames, nodes):
         out.append(ln)
 
     output_array = np.asarray(out)
-    output_vectors = np.empty([len(output_array), 42])
+    output_vectors = np.empty([len(output_array), 48])
     for idx, line in enumerate(output_array):
         output_vectors[idx] = line.flatten()
     return output_vectors
 
 
 def remove_extra_joints_in_pos(motion):
+    ''' remove extra shoulders '''
     T = motion.shape[0]
-    motion = motion.reshape(-1, 14, 3)
+    motion = motion.reshape(-1, 16, 3)
     motion = np.concatenate([
         motion[:, 0:6],
-        motion[:, 7:10],
-        motion[:, 11:]], axis=1)
+        motion[:, 7:11],
+        motion[:, 12:]], axis=1)
     return motion.reshape(T, -1)
 
 
@@ -160,7 +160,14 @@ def rot2pos(motion):
     2D to 2D
     '''
     nodes = create_hierarchy_nodes()
-    motion = remove_hand_in_rot(motion)
+    # for i, node in enumerate(nodes):
+    #     print(i, node)
+    # assert 0
+    # motion = remove_hand_in_rot(motion)
     pos = rot_vec_to_abs_pos_vec(motion, nodes)
+    # print(pos.shape)
+    # assert 0
     pos = remove_extra_joints_in_pos(pos)
+    # print(pos.shape)
+    # assert 0
     return pos

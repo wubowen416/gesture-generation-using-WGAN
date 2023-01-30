@@ -15,8 +15,8 @@ sns.set()
 
 lines = [
         [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],
-        [3, 6], [6, 7], [7, 8],
-        [3, 9], [9, 10], [10, 11]
+        [3, 6], [6, 7], [7, 8], [8, 9],
+        [3, 10], [10, 11], [11, 12], [12, 13]
     ]
 
 def plot_position_3D(motion, path):
@@ -24,7 +24,7 @@ def plot_position_3D(motion, path):
     print(f'Plotting with length {motion.shape[0]}')
     
     def update_graph(num):
-        x, y, z = motion[num][::3], motion[num][1::3], motion[num][2::3]
+        x, y, z = motion[num][::3], -motion[num][2::3], motion[num][1::3]
         graph._offsets3d = (x, y, z)
         title.set_text('3D Test, step={}'.format(num))
 
@@ -42,7 +42,7 @@ def plot_position_3D(motion, path):
     graph = ax.scatter([], [], [], c='b', s=5, alpha=1)
     graph_lines = [ax.plot([], [], [], c='b') for i, _ in enumerate(lines)]
 
-    ax.view_init(0, 0)
+    # ax.view_init(0, 0)
     ax.set_ylim(-50, 50)
     ax.set_zlim(0, 100)
     ax.set_xlim(-50, 50)
