@@ -47,24 +47,6 @@ See https://github.com/wubowen416/unity_gesture_visualizer.
 ## Citation
 To cite our work, you can use the following BibTex reference
 ```
-@inproceedings{10.1145/3461615.3485407,
-author = {Wu, Bowen and Liu, Chaoran and Ishi, Carlos T. and Ishiguro, Hiroshi},
-title = {Probabilistic Human-like Gesture Synthesis from Speech Using GRU-Based WGAN},
-year = {2021},
-isbn = {9781450384711},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-url = {https://doi.org/10.1145/3461615.3485407},
-doi = {10.1145/3461615.3485407},
-abstract = { Gestures are crucial for increasing the human-likeness of agents and robots to achieve smoother interactions with humans. The realization of an effective system to model human gestures, which are matched with the speech utterances, is necessary to be embedded in these agents. In this work, we propose a GRU-based autoregressive generation model for gesture generation, which is trained with a CNN-based discriminator in an adversarial manner using a WGAN-based learning algorithm. The model is trained to output the rotation angles of the joints in the upper body, and implemented to animate a CG avatar. The motions synthesized by the proposed system are evaluated via an objective measure and a subjective experiment, showing that the proposed model outperforms a baseline model which is trained by a state-of-the-art GAN-based algorithm, using the same dataset. This result reveals that it is essential to develop a stable and robust learning algorithm for training gesture generation models. Our code can be found in https://github.com/wubowen416/gesture-generation.},
-booktitle = {Companion Publication of the 2021 International Conference on Multimodal Interaction},
-pages = {194–201},
-numpages = {8},
-keywords = {gesture generation, neural network, social robots, deep learning, generative model},
-location = {Montreal, QC, Canada},
-series = {ICMI '21 Companion}
-}
-
 @inproceedings{wu2021probabilistic,
   title={Probabilistic human-like gesture synthesis from speech using GRU-based WGAN},
   author={Wu, Bowen and Ishi, Carlos and Ishiguro, Hiroshi and others},
